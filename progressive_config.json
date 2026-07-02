@@ -1,0 +1,519 @@
+{
+  "tenant": "Progressive",
+  "package_prefix": "HQ2_Interview",
+  "field_path_prefix": "PolicyData/",
+  "lob_map": {
+    "ManufacturedHome": "MFH",
+    "PersonalHome": "HO3",
+    "Condominium": "HO6",
+    "Renters": "HO4",
+    "DwellingFire": "DF"
+  },
+  "claim_flags": {
+    "Claim:InterviewFlowType_Agent": {
+      "category": "flow",
+      "value": "Agent",
+      "description": "Interview is running in Agent flow (PAA 2.0)."
+    },
+    "Claim:InterviewFlowType_Consumer": {
+      "category": "flow",
+      "value": "Consumer",
+      "description": "Interview is running in Consumer flow (HQX 2.0)."
+    },
+    "Claim:NewQuote_True": {
+      "category": "quote_state",
+      "value": "NewQuote",
+      "description": "This is a new quote (not retrieved). Absent = quote was retrieved."
+    },
+    "Claim:QuoteRetrieved_True": {
+      "category": "quote_state",
+      "value": "QuoteRetrieved",
+      "description": "This quote was retrieved (not new). Opposite of NewQuote_True."
+    },
+    "Claim:SourceKeyword_MPQ3": {
+      "category": "source",
+      "value": "MPQ3",
+      "description": "Quote originated from the MPQ3 source."
+    },
+    "Claim:PreDefinedPackage_True": {
+      "category": "covmod",
+      "value": "PreDefinedPackage",
+      "description": "CovMod active for this carrier and state."
+    },
+    "Claim:SinglePackage_True": {
+      "category": "covmod",
+      "value": "SinglePackage",
+      "description": "Only one package submission is running."
+    },
+    "Claim:PackageType_Basic": {
+      "category": "covmod",
+      "value": "PackageType_Basic",
+      "description": "Current submission is the Basic package."
+    },
+    "Claim:PackageType_Standard": {
+      "category": "covmod",
+      "value": "PackageType_Standard",
+      "description": "Current submission is the Standard package."
+    },
+    "Claim:PackageType_Premium": {
+      "category": "covmod",
+      "value": "PackageType_Premium",
+      "description": "Current submission is the Premium package."
+    },
+    "Claim:PackageType_Custom": {
+      "category": "covmod",
+      "value": "PackageType_Custom",
+      "description": "Customized package; always sent with SinglePackage_True."
+    },
+    "Claim:EditQuote_True": {
+      "category": "quote_state",
+      "value": "EditQuote",
+      "description": "Quote is in edit mode (can be edited). If false, quote cannot be edited."
+    },
+    "Claim:OwnerInfo_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Section claim \u2014 not relevant for defaults/relevancy/validation analysis. Ignored."
+    },
+    "Claim:InfoWeFoundExterior_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Exterior \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundTheBasics_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for TheBasics \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundTriage_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Triage \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundInterior_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Interior \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundOwners_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Owners \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundStructure_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Structure \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:InfoWeFoundUtilities_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Utilities \u2014 handled by code, not ODM/RE."
+    },
+    "Claim:SourceKeyword_MPQ3_DR": {
+      "category": "source",
+      "value": "MPQ3_DR"
+    },
+    "Claim:SourceKeyword_MPX": {
+      "category": "source",
+      "value": "MPX"
+    },
+    "Claim:QuoteStartAPI": {
+      "category": "source",
+      "value": "QuoteStartAPI"
+    },
+    "Claim:abntest-info-we-found-ab-testing_A": {
+      "category": "source",
+      "value": "abntest-iwf-A"
+    },
+    "Claim:InfoWefoundTriage_True": {
+      "category": "section",
+      "value": "SKIP",
+      "description": "Prefill vendor claim for Triage (lowercase variant) \u2014 handled by code."
+    },
+    "Claim:QuoteScope_FQ": {
+      "category": "scope",
+      "value": "FQ",
+      "description": "Rule applies to Full Quote stage only. Maps to AgentFQ/ConsumerFQ in RE FlowStages."
+    },
+    "Claim:QuoteScope_Prebind": {
+      "category": "scope",
+      "value": "Prebind",
+      "description": "Rule applies to Prebind stage only. Maps to Prebind FlowStage in RE."
+    },
+    "Claim:BusinessType_Personal": {
+      "category": "quote_state",
+      "value": "BusinessType_Personal",
+      "description": "Personal lines business type \u2014 include in conditions."
+    },
+    "Claim:SourceKeyword_MPQ3_Renters": {
+      "category": "source",
+      "value": "MPQ3_Renters",
+      "description": "MPQ3 source in Renters LOB context \u2014 quote originated from Progressive auto policy flow leading to home/renters quote. Include in conditions."
+    }
+  },
+  "skip_flags": {
+    "ViewMode": {
+      "classification": "SKIP",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "ViewMode is always OFF. All ViewMode rules are excluded from output entirely \u2014 view-only display logic is not relevant for migration analysis."
+    },
+    "ABTest-co-applicant-improvements": {
+      "classification": "SKIP",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "A/B test always OFF. Expected behavior is A. No need to include in output."
+    },
+    "DataDictionary": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "DataDictionary rules excluded \u2014 handled separately. 70/75 fields also have non-DD rules."
+    },
+    "Progressive_Interview": {
+      "classification": "SKIP",
+      "always_on": true,
+      "reason": "Always true for Progressive. Rules with IS ENABLED=false do not apply to Progressive."
+    },
+    "AMSuitDwellingFireSubmissionODM": {
+      "classification": "SKIP",
+      "always_on": true,
+      "reason": "Always ON. IS ENABLED=false rules never fire \u2014 skip those files."
+    }
+  },
+  "source_flags": {
+    "note": "These three flags form a mutually exclusive source identity matrix.",
+    "identity_flags": [
+      "ba_odysseyapi",
+      "ba_LightApi",
+      "ba_getquoteapi"
+    ],
+    "matrix": {
+      "PAA 2.0 (Agent)": {
+        "ba_odysseyapi": true,
+        "ba_LightApi": false,
+        "ba_getquoteapi": false
+      },
+      "HQX 2.0 (Consumer)": {
+        "ba_odysseyapi": false,
+        "ba_LightApi": true,
+        "ba_getquoteapi": false
+      },
+      "GetQuote": {
+        "ba_odysseyapi": false,
+        "ba_LightApi": false,
+        "ba_getquoteapi": true
+      },
+      "MPQ3 / Platform / Other": {
+        "ba_odysseyapi": false,
+        "ba_LightApi": false,
+        "ba_getquoteapi": false
+      }
+    },
+    "interpretation": {
+      "ba_odysseyapi=true": "PAA 2.0 Agent flow only",
+      "ba_odysseyapi=false": "Everything except PAA 2.0 (HQX 2.0, GetQuote, MPQ3, etc.)",
+      "ba_LightApi=true": "HQX 2.0 Consumer flow only",
+      "ba_LightApi=false": "Everything except HQX 2.0 (PAA 2.0, GetQuote, MPQ3, etc.)",
+      "ba_getquoteapi=true": "GetQuote source only",
+      "ba_getquoteapi=false": "Everything except GetQuote (PAA 2.0, HQX 2.0, MPQ3, etc.)",
+      "ba_odysseyapi=false AND ba_getquoteapi=false": "Not PAA 2.0 and not GetQuote (HQX 2.0, MPQ3, etc.)"
+    }
+  },
+  "business_flags": {
+    "ba_IWFnoAC-relevancy": {
+      "classification": "SKIP",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "HQX 2.0 relevancy now controlled by UI, not ODM/RE. Cleanup candidate."
+    },
+    "ba_df-consumer-hqx10": {
+      "classification": "CLEANUP",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "Flag not found in LaunchDarkly \u2014 removed. All rules using IS ENABLED=true never fire. Treat as always FALSE."
+    },
+    "ba_odysseyapi": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "source_identity": "PAA 2.0 (Agent)",
+      "reason": "Source identity flag. ON = PAA 2.0 Agent. OFF = everything else."
+    },
+    "ba_SSNRemovalForMPQ3": {
+      "classification": "SKIP",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "Flag is OFF in all environments. Rules using IS ENABLED=true never fire."
+    },
+    "ba_LightApi": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "source_identity": "HQX 2.0 (Consumer)",
+      "reason": "Source identity flag. ON = HQX 2.0 Consumer. OFF = everything else."
+    },
+    "ba_getquoteapi": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "effective_value": null,
+      "source_identity": "GetQuote",
+      "reason": "Source identity flag. ON = GetQuote source. OFF = everything else. Evaluate per condition."
+    },
+    "ba_Condo_Redesign": {
+      "classification": "CLEANUP",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "IS ENABLED=false targets other tenants. In Progressive flag is ON so IS ENABLED=false rules don't apply."
+    },
+    "ba_number-of-families": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON in HQX 2.0. Treat as always true."
+    },
+    "ba_abtest-naming-convention": {
+      "classification": "CLEANUP",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Has two branches (true/false) but should be fixated to true. Cleanup candidate \u2014 remove flag and keep only the IS ENABLED=true branch logic."
+    },
+    "ba_yearbuild-default-date": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_fl-carriertrue": {
+      "classification": "IMPLEMENT",
+      "always_on": false,
+      "effective_value": false,
+      "reason": "Always OFF. Only IS ENABLED=false rules fire."
+    },
+    "ba_SSNRemoval": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_tmp_preference_redesign_cr618": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_exotic-ho6-1-0": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_optional-phone-number": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_hide-current-carrier": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "Always ON. Only IS ENABLED=true rules fire."
+    },
+    "ba_financial-hardships-multi": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_validate-yearbuilt-in-api": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_no-of-units": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_hide-vaulted-and-crown": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_iwf_onlynofireplace": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_ChangeMailingWhenSameAsProperty": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_floor-questions-segment": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_AMSUITE_HO10": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_multialarm": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_utilities-replaced-question": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_hide-oil-heated": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_IWFnoAC": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Include in conditions."
+    },
+    "ba_greyout-bundelingautopolicynum": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Always OFF. Rule is irrelevant."
+    },
+    "ba_AAH_CustomFields": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "AAH and CONNECT tenants only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_QSValidateAccount": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "USAA (QuickSilver) tenant only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_personalauto_validations": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "GetQuoteApi/GQCustomApi source only. Fallthrough=false \u2192 Progressive HQX2/PAA gets OFF."
+    },
+    "ba_requirevehcov": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "BOLTAG GetQuoteApi vehicle coverage only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_limited-collision": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "KRAFTLAKEX auto collision only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_applyd2cdefaults": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Progressive tenant rule explicitly serves false (PROGRESSIVEPL \u2192 variation=false). Progressive gets OFF."
+    },
+    "ba_WCValidation": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "No tenant rules but Workers Comp validation \u2014 commercial lines, not Progressive home."
+    },
+    "ba_minimum-coverage-legislation": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "No tenant rules but describes auto coverage legislation (PD field). Not a Progressive home field."
+    },
+    "ba_auto_all_enums": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Auto enums for BOLT/SAIS/UNIFY/BOLTAG/USAA. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_validate-bi-consumer": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "USAA and BOLTAG auto BI validation only. Auto field \u2014 not Progressive home."
+    },
+    "ba_FarmersDeclineReason": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "KRAFTLAKEX (Farmers) tenant only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_multi_lob": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Other tenants only (NATIONALCOVERAGE, BOLTAG, KRAFTLAKEX, etc). Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_morethan4vehicles": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Other tenants only (USAA, LIBERTYX, KRAFTLAKEX, VWCANADA). Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_progcauto": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Progressive Auto (PROGRESSIVECL) only \u2014 not Progressive Home (PROGRESSIVEPL). Fallthrough=false \u2192 Progressive Home gets OFF."
+    },
+    "ba_clauto_umpd_policy_vehicle": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Auto UMPD \u2014 KRAFTLAKE tenant. Not a Progressive home field regardless of fallthrough."
+    },
+    "show-vin-alert-and-require-vehicle-details": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "UNIFY/PROGRESSIVECLDHUB (auto) only, OFF in UAT/staging/production. Not Progressive home."
+    },
+    "ba_D2CAPI": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "BOLTAG and KRAFTLAKEX D2C API only. Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_D2CFlow_GetQuoteAPI": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Not found in LaunchDarkly snapshot \u2014 dead/removed flag."
+    },
+    "NoReplacementCost": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Not found in LaunchDarkly \u2014 likely dead/removed flag."
+    },
+    "ba_fullquote": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "Other tenants only (NATGEN, USAA, BOLTACCESS, KRAFTLAKEX). Fallthrough=false \u2192 Progressive gets OFF."
+    },
+    "ba_futureyearbuilt": {
+      "classification": "SKIP",
+      "always_on": false,
+      "reason": "USAA tenant only (Tenant in [USAA]). Fallthrough=false \u2192 Progressive gets OFF. IS ENABLED=false rules fire \u2014 but field is PlumbingUpdatedYear which is not a Progressive migration target."
+    },
+    "ba_Progressive_FL": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "Progressive tenant rule exists (PROGRESSIVEPL, PGRX). Always ON in all envs \u2014 conditions included, consider hardcoding true after team verification."
+    },
+    "ba_FlooringComposition-display-field": {
+      "classification": "IMPLEMENT",
+      "always_on": null,
+      "reason": "No tenant rules \u2014 global ON in all envs. Conditions included, consider hardcoding true after team verification."
+    }
+  },
+  "review_later": {
+    "prefill_key": "ThirdPartyPrefill",
+    "pages": [
+      "AccountInfo",
+      "YourRates"
+    ],
+    "custom_fields": {
+      "QBEOnlineBuy": "skip",
+      "AddressChanged": "main",
+      "VisibleLeak": "review_later",
+      "HasWaterHeaterBeenReplaced": "review_later",
+      "MHCircuitBreaker": "review_later",
+      "MHElectircalUpdated": "review_later"
+    }
+  }
+}
