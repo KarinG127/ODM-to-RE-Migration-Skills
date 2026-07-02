@@ -115,6 +115,27 @@ not in the defaults zip, he classifies it and updates the shared config.
 
 ---
 
+## GitHub repo — file inventory
+
+Files currently in the repo and their status:
+
+| File | Status | Notes |
+|---|---|---|
+| `README.md` | ✅ Current | This file |
+| `odm_core.py` | ✅ Current | Shared extraction library — must be present for both parsers to run |
+| `odm_defaults.py` | ✅ Current | Defaults parser — replaces `odm_parser.py` |
+| `odm_validations.py` | ✅ Current | Validations parser — new, for coworker |
+| `odm-core_SKILL.md` | ✅ Current | Reference doc for shared library |
+| `odm-defaults_SKILL.md` | ✅ Current | Trigger skill for defaults parsing |
+| `odm-validations_SKILL.md` | ✅ Current | Trigger skill for validations parsing |
+| `odm-instructions_SKILL.md` | ✅ Current | Planned stub — not yet built |
+| `progressive_config.json` | ✅ Current | Shared flag/LOB config for both parsers |
+| `odm_parser.py` | ❌ Delete | Replaced by `odm_defaults.py` + `odm_validations.py` + `odm_core.py` |
+| `odm-parser-SKILL.md` | ❌ Delete | Replaced by the three separate SKILL.md files above |
+| `odm-parser.skill` | ❌ Delete | Old format — replaced by the three separate SKILL.md files above |
+
+---
+
 ## Session startup
 
 | What you want to do | Say this |
