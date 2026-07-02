@@ -3,7 +3,7 @@
 ## What this project is
 
 Migrating Progressive's insurance rules from IBM ODM to Bolt's Rule Engine (RE / RoBolt, C#).
-Tenant: **Progressive**. Repo: `C:\Users\karing\source\repos\markets`
+Tenant: **Progressive**. Repo: `C:\Users\@username\source\repos\markets`
 
 This README is the permanent source of truth for the migration approach,
 skill structure, and pipeline. Future sessions and team members should be
