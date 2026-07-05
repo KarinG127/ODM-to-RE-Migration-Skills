@@ -11,6 +11,43 @@ from this file alone — read this first, then open the relevant SKILL.md.
 
 ---
 
+## Repo folder structure
+
+```
+ODM-to-RE-Migration-Skills/          ← GitHub repo root
+  README.md                          ← you are here
+  progressive_config.json            ← shared flag/LOB config for all parsers
+  direct_version_cache.json          ← shared version state for direct reader
+
+  core/
+    odm_core.py                      ← shared extraction library
+    odm-core_SKILL.md                ← reference doc, not a trigger skill
+
+  defaults/
+    odm_defaults.py                  ← parse ODM defaults/relevancy/stage rules
+    odm-defaults_SKILL.md            ← trigger: "parse defaults"
+    odm_defaults_classify.py         ← classify defaults as System or Business
+    odm-defaults-classify_SKILL.md   ← trigger: "classify defaults"
+
+  validations/
+    odm_validations.py               ← parse ODM validation rules
+    odm-validations_SKILL.md         ← trigger: "parse validations"
+
+  direct-reader/
+    direct_reader.py                 ← extract field inventory from PAA/HQX Excel
+    direct_reader_SKILL.md           ← trigger: "read directs"
+
+  instructions/
+    odm-instructions_SKILL.md        ← PLANNED stub — carrier onboarding, not yet built
+
+  archive/
+    odm_parser.py                    ← original monolith — kept for reference only
+    odm-parser-SKILL.md              ← original skill — kept for reference only
+    odm-parser.skill                 ← old format — kept for reference only
+```
+
+---
+
 ## How to use this README
 
 - **Starting a new session?** → Read the [Session Startup](#session-startup) section
@@ -44,8 +81,8 @@ The config is shared between all parsers.
 
 | File | Type | Purpose |
 |---|---|---|
-| `odm_core.py` | Script | Shared extraction library — file reading, flag parsing, LOB extraction, dead rule detection, condition extraction |
-| `odm-core_SKILL.md` | Reference | Documents what the core provides and when to edit it. Not a trigger skill |
+| `core/odm_core.py` | Script | Shared extraction library — file reading, flag parsing, LOB extraction, dead rule detection, condition extraction |
+| `core/odm-core_SKILL.md` | Reference | Documents what the core provides and when to edit it. Not a trigger skill |
 | `progressive_config.json` | Config | Classified flag registry — `ba_` flags, `Claim:` flags, LOB map, skip flags, review_later routing |
 
 ### When to edit `odm_core.py`
@@ -98,10 +135,10 @@ Direct_Master.csv
 
 | File | Type | Purpose |
 |---|---|---|
-| `odm_defaults.py` | Script | Parses ODM `.m` files — extracts `InterviewAttributeType` rules (Default, Relevancy, Stage) |
-| `odm-defaults_SKILL.md` | Skill | Trigger skill — full run instructions, flag logic, output column reference, stop-and-ask workflow |
-| `odm_defaults_classify.py` | Script | Joins `Defaults.csv` + `Progressive_Direct_Master.csv` — classifies each rule as System or Business |
-| `odm-defaults-classify_SKILL.md` | Skill | Trigger skill — classification rules, gap types, radio/control type conflict flags |
+| `defaults/odm_defaults.py` | Script | Parses ODM `.m` files — extracts `InterviewAttributeType` rules (Default, Relevancy, Stage) |
+| `defaults/odm-defaults_SKILL.md` | Skill | Trigger skill — full run instructions, flag logic, output column reference, stop-and-ask workflow |
+| `defaults/odm_defaults_classify.py` | Script | Joins `Defaults.csv` + `Progressive_Direct_Master.csv` — classifies each rule as System or Business |
+| `defaults/odm-defaults-classify_SKILL.md` | Skill | Trigger skill — classification rules, gap types, radio/control type conflict flags |
 
 ### Classification rules
 
@@ -174,8 +211,8 @@ ODM validation .m files
 
 | File | Type | Purpose |
 |---|---|---|
-| `odm_validations.py` | Script | Parses ODM `.m` files — extracts `validationResponse.addError` rules |
-| `odm-validations_SKILL.md` | Skill | Trigger skill — same stop-and-ask flow as defaults, validation-specific output columns |
+| `validations/odm_validations.py` | Script | Parses ODM `.m` files — extracts `validationResponse.addError` rules |
+| `validations/odm-validations_SKILL.md` | Skill | Trigger skill — same stop-and-ask flow as defaults, validation-specific output columns |
 
 ### How to identify validation files
 
@@ -261,10 +298,10 @@ used by the classifier and gap analysis.
 
 | File | Type | Purpose |
 |---|---|---|
-| `direct_reader.py` | Script | Reads PAA and HQX Excel files, outputs unified master CSV |
-| `direct_reader_SKILL.md` | Skill | Trigger skill — sheet handling, column mapping, LOB extraction, warning types |
-| `PAA_2_0_Direct_Interview.xlsx` | Data | Agent flow field definitions (source of truth) |
-| `HQX2_0_Direct_Interview.xlsx` | Data | Consumer flow field definitions (source of truth) |
+| `direct-reader/direct_reader.py` | Script | Reads PAA and HQX Excel files, outputs unified master CSV |
+| `direct-reader/direct_reader_SKILL.md` | Skill | Trigger skill — sheet handling, column mapping, LOB extraction, warning types |
+| `PAA_2_0_Direct_Interview.xlsx` | Data | Agent flow — kept on SharePoint, not in repo |
+| `HQX2_0_Direct_Interview.xlsx` | Data | Consumer flow — kept on SharePoint, not in repo |
 
 ### Output
 
@@ -323,48 +360,52 @@ Every file in the project, grouped by area:
 
 | File | Status | Do not edit unless... |
 |---|---|---|
-| `odm_core.py` | ✅ Current | Bug affects both defaults AND validations |
-| `odm-core_SKILL.md` | ✅ Current | Core architecture changes |
+| `core/odm_core.py` | ✅ Current | Bug affects both defaults AND validations |
+| `core/odm-core_SKILL.md` | ✅ Current | Core architecture changes |
 | `progressive_config.json` | ✅ Current | New unknown flag encountered during a run |
+| `direct_version_cache.json` | ✅ Current | Never edit manually — written by direct_reader.py |
 
 ### Defaults workstream
 
 | File | Status | Notes |
 |---|---|---|
-| `odm_defaults.py` | ✅ Current | Run directly — do not rewrite |
-| `odm-defaults_SKILL.md` | ✅ Current | Full parse documentation |
-| `odm_defaults_classify.py` | ✅ Current | Run after clean Defaults.csv |
-| `odm-defaults-classify_SKILL.md` | ✅ Current | Full classify documentation |
+| `defaults/odm_defaults.py` | ✅ Current | Run directly — do not rewrite |
+| `defaults/odm-defaults_SKILL.md` | ✅ Current | Full parse documentation |
+| `defaults/odm_defaults_classify.py` | ✅ Current | Run after clean Defaults.csv |
+| `defaults/odm-defaults-classify_SKILL.md` | ✅ Current | Full classify documentation |
 
 ### Validations workstream
 
 | File | Status | Notes |
 |---|---|---|
-| `odm_validations.py` | ✅ Current | Run directly — do not rewrite |
-| `odm-validations_SKILL.md` | ✅ Current | Full parse documentation |
+| `validations/odm_validations.py` | ✅ Current | Run directly — do not rewrite |
+| `validations/odm-validations_SKILL.md` | ✅ Current | Full parse documentation |
 
 ### Direct reader
 
 | File | Status | Notes |
 |---|---|---|
-| `direct_reader.py` | ✅ Current | Run directly — do not rewrite |
-| `direct_reader_SKILL.md` | ✅ Current | Full extraction documentation |
-| `PAA_2_0_Direct_Interview.xlsx` | ✅ Current | Do not edit — source of truth |
-| `HQX2_0_Direct_Interview.xlsx` | ✅ Current | Do not edit — source of truth |
+| `direct-reader/direct_reader.py` | ✅ Current | Run directly — do not rewrite |
+| `direct-reader/direct_reader_SKILL.md` | ✅ Current | Full extraction documentation |
+| `PAA_2_0_Direct_Interview.xlsx` | 📁 SharePoint | Not in repo — source of truth on SharePoint |
+| `HQX2_0_Direct_Interview.xlsx` | 📁 SharePoint | Not in repo — source of truth on SharePoint |
 
 ### Instructions (future)
 
 | File | Status | Notes |
 |---|---|---|
-| `odm-instructions_SKILL.md` | 📋 Stub | Not yet built — build when needed |
+| `instructions/odm-instructions_SKILL.md` | 📋 Stub | Not yet built — build when needed |
 
-### Obsolete — delete from repo
+### Archive — kept for reference only
 
-| File | Reason |
-|---|---|
-| `odm_parser.py` | Replaced by `odm_defaults.py` + `odm_validations.py` + `odm_core.py` |
-| `odm-parser-SKILL.md` | Replaced by the three separate SKILL.md files |
-| `odm-parser.skill` | Old format — replaced |
+| File | Location | Reason kept |
+|---|---|---|
+| `odm_parser.py` | `archive/` | Original monolith — replaced by `core/` + `defaults/` + `validations/` |
+| `odm-parser-SKILL.md` | `archive/` | Original skill — replaced by the three separate SKILL.md files |
+| `odm-parser.skill` | `archive/` | Old format — replaced |
+
+Do not use these files. They are kept in case a specific extraction behavior needs
+to be cross-referenced against the original implementation.
 
 ---
 
