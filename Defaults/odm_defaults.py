@@ -41,7 +41,7 @@ from typing import Optional
 
 # Import shared core — must be in same directory or PYTHONPATH
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
 from odm_core import (
     read_odm_file, should_skip_file, extract_flags, extract_lobs,
     extract_conditions, simplify_conditions, load_config, save_config, write_csv

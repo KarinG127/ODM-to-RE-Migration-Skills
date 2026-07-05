@@ -31,7 +31,7 @@ ODM .m files  →  [odm-defaults]  →  Defaults.csv  →  [classify]  →  Syst
 ## How to run
 
 ```bash
-python3 odm_defaults.py \
+python3 defaults/odm_defaults.py \
     --config progressive_config.json \
     --input  /path/to/odm/defaults/ \
     --output /path/to/output/ \

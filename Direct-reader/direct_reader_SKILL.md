@@ -25,10 +25,10 @@ Both files are in `/mnt/project/`. Copy to `/home/claude/` before reading.
 ## How to Run
 
 ```bash
-cp /mnt/project/PAA_2_0_Direct_Interview.xlsx /home/claude/
-cp /mnt/project/HQX2_0_Direct_Interview.xlsx /home/claude/
+cp /path/to/sharepoint/PAA_2_0_Direct_Interview.xlsx /home/claude/
+cp /path/to/sharepoint/HQX2_0_Direct_Interview.xlsx /home/claude/
 pip install openpyxl pandas --break-system-packages -q
-python3 /home/claude/direct_reader.py
+python3 /home/claude/direct-reader/direct_reader.py
 ```
 
 Trigger phrase: **"read directs"**
