@@ -3,136 +3,368 @@
 ## What this project is
 
 Migrating Progressive's insurance rules from IBM ODM to Bolt's Rule Engine (RE / RoBolt, C#).
-Tenant: **Progressive**. Repo: `C:\Users\@username\source\repos\markets`
+Tenant: **Progressive**. RE repo: `C:\Users\%USERNAME%\source\repos\markets`
 
-This README is the permanent source of truth for the migration approach,
-skill structure, and pipeline. Future sessions and team members should be
-able to orient from this file alone.
-
----
-
-## Skill structure
-
-```
-robolt-skills/
-  odm-core/
-    SKILL.md              ← describes shared library, not a trigger skill
-    odm_core.py           ← shared: file reading, flag extraction, condition extraction,
-                             LOB extraction, dead rule detection, config I/O
-
-  odm-defaults/
-    SKILL.md              ← trigger: "parse defaults", "run odm-defaults"
-    odm_defaults.py       ← imports odm_core; extracts InterviewAttributeType rules
-                             outputs: Defaults.csv + Review_Later + Stage_Rules_Review
-                                    + Active_Flags + Retired_Flags + Unresolved_Flags
-
-  odm-validations/
-    SKILL.md              ← trigger: "parse validations", "run odm-validations"
-    odm_validations.py    ← imports odm_core; extracts validationResponse.addError rules
-                             outputs: Validations.csv + Review_Later
-                                    + Active_Flags + Retired_Flags + Unresolved_Flags
-
-  odm-instructions/
-    SKILL.md              ← PLANNED stub only — not yet built
-    (no script yet)       ← will parse submissionService.createSubmissionMapping rules
-                             for future carrier onboarding projects
-
-  direct-reader/
-    SKILL.md              ← trigger: "read directs", "sync the direct"
-    direct_reader.py      ← extracts field inventory from PAA/HQX Excel files
-```
+This README is the permanent source of truth for the migration approach, all files,
+and the full pipeline. Future sessions and team members should be able to orient
+from this file alone — read this first, then open the relevant SKILL.md.
 
 ---
 
-## Migration pipeline
+## How to use this README
 
-```
-Stage 1 — Parse defaults
-  ODM .m files  →  odm-defaults  →  Defaults.csv
-  Milestone: Defaults.csv confirmed clean, 0 unresolved flags
-
-Stage 2 — Classify defaults
-  Defaults.csv  →  odm-defaults-classify  →  System_Defaults.csv
-                                          →  Business_Defaults.csv
-  Milestone: two CSVs confirmed, classification rules documented
-  (Classification rules to be provided by user — skill not yet built)
-
-Stage 3 — Generate RE code for defaults
-  System_Defaults.csv  →  re-defaults-codegen  →  C# DefaultRuleCollection classes
-  Tool: Claude Code (writes directly into repo)
-  Milestone: classes in repo, passing review
-
-Stage 4 — Parse validations (parallel, independent)
-  ODM .m files  →  odm-validations  →  Validations.csv
-  Milestone: Validations.csv confirmed clean, 0 unresolved flags
-
-Stage 5 — Generate RE code for validations
-  Validations.csv  →  re-validations-codegen  →  C# ValidationRuleCollection classes
-  Tool: Claude Code
-  Milestone: classes in repo, passing review
-
-Stage 6 — Gap analysis
-  Defaults.csv + Validations.csv + Direct Master CSV  →  gap-analysis  →  Gap Report
-  Milestone: all gaps identified, prioritized, assigned
-
-Stage 7 — Source of truth update
-  All confirmed CSVs + C# classes  →  updated Direct files + documentation
-  Milestone: new source of truth ready for next carrier
-```
+- **Starting a new session?** → Read the [Session Startup](#session-startup) section
+- **Looking for a specific file?** → See [File Inventory](#file-inventory)
+- **Confused about a migration stage?** → Each stage has its own section below
+- **Something broken?** → Check [Current Blockers](#current-blockers)
 
 ---
 
-## Team split
+## Migration overview
 
-| Person | Skill | Input | Output | Dependency |
-|---|---|---|---|---|
-| You | `odm-defaults` | Defaults zip | `Defaults.csv` | None |
-| Coworker | `odm-validations` | Validations zip | `Validations.csv` | None — independent |
-| Both | `progressive_config.json` | Shared config | — | Classify unknown flags together |
+The migration is broken into rule types. Each rule type is a self-contained
+workstream with its own parse → classify → codegen pipeline:
 
-Both skills run from the same config file. If defaults run first and resolves
-all unknown flags, coworker's run will start clean. If he encounters a new flag
-not in the defaults zip, he classifies it and updates the shared config.
+| Rule Type | Owner | Status |
+|---|---|---|
+| **Defaults** | You | 🔄 In progress — parse + classify built |
+| **Validations** | Coworker | 🔄 In progress — parse built |
+| **Relevancy** | TBD | 📋 Planned |
+| **Stages** | TBD | 📋 Planned |
+| **Direct Reader** | Shared | ✅ Built — field inventory extraction |
 
 ---
 
-## Project files — load on demand
+## 1. Shared Foundation
 
-| File | When to read it |
+These files underpin everything. Both parsers import `odm_core.py`.
+The config is shared between all parsers.
+
+### Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `odm_core.py` | Script | Shared extraction library — file reading, flag parsing, LOB extraction, dead rule detection, condition extraction |
+| `odm-core_SKILL.md` | Reference | Documents what the core provides and when to edit it. Not a trigger skill |
+| `progressive_config.json` | Config | Classified flag registry — `ba_` flags, `Claim:` flags, LOB map, skip flags, review_later routing |
+
+### When to edit `odm_core.py`
+
+Only when the bug affects **both** parsers — flag parsing, dead rule detection,
+condition extraction, LOB extraction, or file decoding. If the bug is
+defaults-specific or validations-specific, fix it in the skill script instead.
+
+### When to edit `progressive_config.json`
+
+When an unknown flag appears during a parse run. Both team members share this
+file — coordinate before updating. See the stop-and-ask workflow in each skill.
+
+### V2 fixes in odm_core
+
+- **Dead rule detection** — strips legitimate `is false` field checks before
+  looking for bare `and false` dead markers. Prevents false positives.
+- **Flow classification** — reads both the Claim flag name AND the IS ENABLED
+  direction. `Claim:InterviewFlowType_Agent IS ENABLED = false` → Consumer.
+
+---
+
+## 2. Defaults
+
+Extract default values from ODM, cross-reference with Direct, classify into
+System (→ RE code) and Business (→ SQL database).
+
+**Owner:** You
+**Trigger phrase:** `"parse defaults"` / `"classify defaults"`
+
+### Pipeline
+
+```
+ODM .m files
+    ↓
+[odm-defaults]  →  Defaults.csv  (Stage 1 — parse)
+    +
+Direct_Master.csv
+    ↓
+[odm-defaults-classify]  →  System_Defaults.csv    (Stage 2 — classify)
+                          →  Business_Defaults.csv
+                          →  Review_Defaults.csv
+                          →  Gaps_Report.csv
+                          →  Agent_Consumer_Diff.csv
+    ↓
+[re-defaults-codegen]  →  C# DefaultRuleCollection classes  (Stage 3 — codegen, Claude Code, PLANNED)
+```
+
+### Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `odm_defaults.py` | Script | Parses ODM `.m` files — extracts `InterviewAttributeType` rules (Default, Relevancy, Stage) |
+| `odm-defaults_SKILL.md` | Skill | Trigger skill — full run instructions, flag logic, output column reference, stop-and-ask workflow |
+| `odm_defaults_classify.py` | Script | Joins `Defaults.csv` + `Progressive_Direct_Master.csv` — classifies each rule as System or Business |
+| `odm-defaults-classify_SKILL.md` | Skill | Trigger skill — classification rules, gap types, radio/control type conflict flags |
+
+### Classification rules
+
+| Condition | Classification |
 |---|---|
-| `README.md` | Orientation — you are here |
-| `odm-defaults/SKILL.md` | When parsing defaults |
-| `odm-defaults/odm_defaults.py` | Run directly — do not rewrite |
-| `odm-validations/SKILL.md` | When parsing validations |
-| `odm-validations/odm_validations.py` | Run directly — do not rewrite |
-| `odm-core/SKILL.md` | When debugging shared extraction issues |
-| `odm-core/odm_core.py` | Run directly — do not rewrite |
-| `progressive_config.json` | Loaded by both parser scripts |
-| `direct-reader/SKILL.md` | When reading Direct Interview Excel files |
-| `direct-reader/direct_reader.py` | Run directly — do not rewrite |
-| `PAA_2_0_Direct_Interview.xlsx` | Read via direct_reader.py only |
-| `HQX2_0_Direct_Interview.xlsx` | Read via direct_reader.py only |
+| Default Value = `""` (empty string) | **System** — cleaning/reset logic |
+| Control Type (Direct) = Checkbox | **System** |
+| Control Type (Direct) = Stepper | **System** |
+| Display Rules contains `hidden` (Direct) | **Business** — hidden field |
+| Everything else | **Review** — stop and ask |
+
+### Special flags raised by classifier
+
+| Flag | Meaning |
+|---|---|
+| `RADIO-CONFLICT` | Direct says Radio/Segmented, ODM has a default — needs decision |
+| `CONTROL-TYPE-CONFLICT` | ODM and Direct disagree on control type — Direct wins, verify |
+| `ODM-ONLY` | Field in ODM but not in Direct — verify in scope |
+| `POSSIBLE-HIDDEN` | Display Rules may indicate hidden but doesn't say "hidden" literally |
+
+### Outputs — Stage 1 (parse)
+
+| File | Contents |
+|---|---|
+| `{prefix}_Defaults.csv` | All parsed rules (Default + Relevancy + Stage types) |
+| `{prefix}_Review_Later.csv` | Rules set aside for separate review |
+| `{prefix}_Stage_Rules_Review.csv` | Stage rules targeting a specific field |
+| `{prefix}_Active_Flags.csv` | IMPLEMENT flags with reasoning |
+| `{prefix}_Retired_Flags.csv` | SKIP/CLEANUP flags |
+| `{prefix}_Unresolved_Flags.csv` | Unknown flags — stop and ask |
+| `{prefix}_Parse_Errors.csv` | Files that failed to decode |
+
+### Outputs — Stage 2 (classify)
+
+| File | Contents |
+|---|---|
+| `{prefix}_System_Defaults.csv` | RE implementation targets |
+| `{prefix}_Business_Defaults.csv` | SQL database targets |
+| `{prefix}_Review_Defaults.csv` | Needs human decision before proceeding |
+| `{prefix}_Gaps_Report.csv` | ODM-only and Direct-only gaps |
+| `{prefix}_Agent_Consumer_Diff.csv` | Same field, different default per flow |
+
+### Milestones
+
+- ✅ Stage 1 complete when: `Unresolved_Flags.csv` empty, `Defaults.csv` confirmed
+- ✅ Stage 2 complete when: `Review_Defaults.csv` empty, both System and Business CSVs confirmed
+- 📋 Stage 3: hand off `System_Defaults.csv` to `re-defaults-codegen` (Claude Code)
 
 ---
 
-## GitHub repo — file inventory
+## 3. Validations
 
-Files currently in the repo and their status:
+Extract validation error rules from ODM, classify, generate RE code.
+
+**Owner:** Coworker
+**Trigger phrase:** `"parse validations"`
+**Independent of Defaults** — can run in parallel.
+
+### Pipeline
+
+```
+ODM validation .m files
+    ↓
+[odm-validations]  →  Validations.csv  (parse)
+    ↓
+[re-validations-codegen]  →  C# ValidationRuleCollection classes  (PLANNED, Claude Code)
+```
+
+### Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `odm_validations.py` | Script | Parses ODM `.m` files — extracts `validationResponse.addError` rules |
+| `odm-validations_SKILL.md` | Skill | Trigger skill — same stop-and-ask flow as defaults, validation-specific output columns |
+
+### How to identify validation files
+
+Validation `.m` files have:
+- Package name containing `Validations` (e.g. `Validations.Progressive_HQ2`)
+- `then` block calls `validationResponse.addError(fieldId, "short msg", "full msg")`
+- No `InterviewAttributeType` calls
+
+### Outputs
+
+| File | Contents |
+|---|---|
+| `{prefix}_Validations.csv` | All parsed validation rules |
+| `{prefix}_Review_Later.csv` | Rules set aside |
+| `{prefix}_Active_Flags.csv` | IMPLEMENT flags |
+| `{prefix}_Retired_Flags.csv` | SKIP/CLEANUP flags |
+| `{prefix}_Unresolved_Flags.csv` | Unknown flags — stop and ask |
+| `{prefix}_Parse_Errors.csv` | Files that failed to decode |
+
+### Milestones
+
+- ✅ Parse complete when: `Unresolved_Flags.csv` empty, `Validations.csv` confirmed
+- 📋 Codegen: hand off to `re-validations-codegen` (Claude Code, not yet built)
+
+---
+
+## 4. Relevancy
+
+Extract relevancy rules from ODM — when/whether a field is displayed.
+
+**Owner:** TBD
+**Status:** 📋 Planned — not yet started
+
+### What relevancy rules look like in ODM
+
+`then` block sets `InterviewAttributeType.Relevant = true/false` or
+`InterviewAttributeType.Mandatory = true/false`. Conditions in the `when`
+block control when the field shows or hides.
+
+### Note
+
+Relevancy rules are currently extracted by `odm_defaults.py` as `Rule Type = Relevancy`
+rows in `Defaults.csv`. When the relevancy workstream starts, these rows will
+be the starting point — no re-parse needed.
+
+### Planned files (not yet built)
+
+| File | Type | Purpose |
+|---|---|---|
+| `odm_relevancy.py` | Script | Extract and structure relevancy rules from Defaults.csv |
+| `odm-relevancy_SKILL.md` | Skill | Trigger skill |
+| `re-relevancy-codegen` | Skill | Generate `RelevancyRuleCollection` C# classes (Claude Code) |
+
+---
+
+## 5. Stages
+
+Extract stage/page rules from ODM — which interview page a field belongs to.
+
+**Owner:** TBD
+**Status:** 📋 Planned — not yet started
+
+### Note
+
+Stage rules are currently extracted by `odm_defaults.py` as `Rule Type = Stage`
+rows and written to `Stage_Rules_Review.csv`. When this workstream starts,
+that CSV is the starting point.
+
+In RE, stage assignment may be an attribute decoration rather than a rule class.
+This will be confirmed when the workstream begins.
+
+---
+
+## 6. Direct Reader
+
+Extracts the full field inventory from both Progressive Direct Interview Excel
+files into a unified master CSV. This is the source of truth for field metadata
+used by the classifier and gap analysis.
+
+**Trigger phrase:** `"read directs"`
+
+### Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `direct_reader.py` | Script | Reads PAA and HQX Excel files, outputs unified master CSV |
+| `direct_reader_SKILL.md` | Skill | Trigger skill — sheet handling, column mapping, LOB extraction, warning types |
+| `PAA_2_0_Direct_Interview.xlsx` | Data | Agent flow field definitions (source of truth) |
+| `HQX2_0_Direct_Interview.xlsx` | Data | Consumer flow field definitions (source of truth) |
+
+### Output
+
+| File | Contents |
+|---|---|
+| `Progressive_Direct_Master.csv` | All fields from both flows — canonical name, control type, display rules, default value, LOBs, page, flow |
+| `Progressive_Direct_Warnings.csv` | Fields with missing LOBs, ambiguous control types, or other issues |
+
+### Sync behavior
+
+On every run, the script first reads the Change Control sheet and compares
+the version number against `direct_version_cache.json`. If the version is
+unchanged → skip. If changed → full re-read, overwrite master CSV, update cache.
+Commit `direct_version_cache.json` to the repo so both team members share
+the same version baseline.
+
+### Key columns used downstream
+
+| Column | Used by |
+|---|---|
+| `Canonical Name` | Join key for classifier |
+| `Control Type` | Classification rule (Checkbox/Stepper/Radio) |
+| `Display Rules` | Classification rule (hidden → Business) |
+| `Default Value` | Gap detection (Direct-only gaps) |
+| `LOBs` | Cross-check against ODM LOBs |
+
+---
+
+## 7. Instructions (Carrier Onboarding)
+
+Parse carrier submission mapping rules — not part of the Progressive migration.
+
+**Status:** 📋 Planned stub only — build when starting a carrier onboarding project
+
+### Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `odm-instructions_SKILL.md` | Stub | Documents planned scope, example file structure (Homesite HO3 RC1), and what to build |
+
+### What instruction files look like
+
+Different from interview rules — `then` block calls:
+- `submissionService.createSubmissionMapping(CarrierID, LOB, field, "/xpath/path", DIRECT, "")`
+- `relevancyService.createFieldsRelevancy(CarrierID, LOB, [fields], DIRECT, "")`
+
+No `InterviewAttributeType` or `validationResponse` calls.
+
+---
+
+## File inventory
+
+Every file in the project, grouped by area:
+
+### Shared foundation
+
+| File | Status | Do not edit unless... |
+|---|---|---|
+| `odm_core.py` | ✅ Current | Bug affects both defaults AND validations |
+| `odm-core_SKILL.md` | ✅ Current | Core architecture changes |
+| `progressive_config.json` | ✅ Current | New unknown flag encountered during a run |
+
+### Defaults workstream
 
 | File | Status | Notes |
 |---|---|---|
-| `README.md` | ✅ Current | This file |
-| `odm_core.py` | ✅ Current | Shared extraction library — must be present for both parsers to run |
-| `odm_defaults.py` | ✅ Current | Defaults parser — replaces `odm_parser.py` |
-| `odm_validations.py` | ✅ Current | Validations parser — new, for coworker |
-| `odm-core_SKILL.md` | ✅ Current | Reference doc for shared library |
-| `odm-defaults_SKILL.md` | ✅ Current | Trigger skill for defaults parsing |
-| `odm-validations_SKILL.md` | ✅ Current | Trigger skill for validations parsing |
-| `odm-instructions_SKILL.md` | ✅ Current | Planned stub — not yet built |
-| `progressive_config.json` | ✅ Current | Shared flag/LOB config for both parsers |
-| `odm_parser.py` | ❌ Delete | Replaced by `odm_defaults.py` + `odm_validations.py` + `odm_core.py` |
-| `odm-parser-SKILL.md` | ❌ Delete | Replaced by the three separate SKILL.md files above |
-| `odm-parser.skill` | ❌ Delete | Old format — replaced by the three separate SKILL.md files above |
+| `odm_defaults.py` | ✅ Current | Run directly — do not rewrite |
+| `odm-defaults_SKILL.md` | ✅ Current | Full parse documentation |
+| `odm_defaults_classify.py` | ✅ Current | Run after clean Defaults.csv |
+| `odm-defaults-classify_SKILL.md` | ✅ Current | Full classify documentation |
+
+### Validations workstream
+
+| File | Status | Notes |
+|---|---|---|
+| `odm_validations.py` | ✅ Current | Run directly — do not rewrite |
+| `odm-validations_SKILL.md` | ✅ Current | Full parse documentation |
+
+### Direct reader
+
+| File | Status | Notes |
+|---|---|---|
+| `direct_reader.py` | ✅ Current | Run directly — do not rewrite |
+| `direct_reader_SKILL.md` | ✅ Current | Full extraction documentation |
+| `PAA_2_0_Direct_Interview.xlsx` | ✅ Current | Do not edit — source of truth |
+| `HQX2_0_Direct_Interview.xlsx` | ✅ Current | Do not edit — source of truth |
+
+### Instructions (future)
+
+| File | Status | Notes |
+|---|---|---|
+| `odm-instructions_SKILL.md` | 📋 Stub | Not yet built — build when needed |
+
+### Obsolete — delete from repo
+
+| File | Reason |
+|---|---|
+| `odm_parser.py` | Replaced by `odm_defaults.py` + `odm_validations.py` + `odm_core.py` |
+| `odm-parser-SKILL.md` | Replaced by the three separate SKILL.md files |
+| `odm-parser.skill` | Old format — replaced |
 
 ---
 
@@ -140,58 +372,33 @@ Files currently in the repo and their status:
 
 | What you want to do | Say this |
 |---|---|
-| Parse ODM defaults | "Parse defaults" + upload zip |
-| Parse ODM validations | "Parse validations" + upload zip |
-| Read Direct files | "Read directs" |
-| Gap analysis | "Run gap analysis" |
-| Generate C# defaults | "Generate RE code for defaults" (Claude Code) |
-| Generate C# validations | "Generate RE code for validations" (Claude Code) |
+| Parse ODM defaults | `"parse defaults"` + upload zip |
+| Classify defaults | `"classify defaults"` — confirm `PGR_Defaults.csv` and `Progressive_Direct_Master.csv` are ready |
+| Parse ODM validations | `"parse validations"` + upload zip |
+| Read Direct files | `"read directs"` |
+| Generate C# defaults | `"generate RE code for defaults"` (use Claude Code) |
+| Generate C# validations | `"generate RE code for validations"` (use Claude Code) |
 | Ask about the project | Just ask — context is in this README |
 
 ---
 
-## Why skills are split this way
+## Team split
 
-**odm-defaults vs odm-validations** — different team members, different
-input zips, different output columns, different C# target classes. Keeping
-them separate means a change to how validation errors are extracted cannot
-accidentally break defaults parsing, and vice versa. This was the direct
-lesson from a previous regression where a fix to one feature broke another.
+| Person | Workstream | Skills | Dependency |
+|---|---|---|---|
+| You | Defaults | `odm-defaults`, `odm-defaults-classify` | None |
+| Coworker | Validations | `odm-validations` | None — fully independent |
+| Both | Config | `progressive_config.json` | Coordinate on new unknown flags |
 
-**odm-core** — the shared logic (flag parsing, dead rule detection, condition
-extraction) lives in one place. A fix here benefits both skills simultaneously.
-The V2 fixes (dead rule logical evaluator, flow direction awareness) live here.
-
-**odm-instructions** — carrier submission mapping is a fundamentally different
-file structure from interview rules. It has no InterviewAttributeType or
-validationResponse calls. Built separately when needed for carrier onboarding.
-Not part of the Progressive migration.
-
-**re-codegen skills (planned, Claude Code)** — code generation writes directly
-into the repo. Claude Code is the right tool for this — it has direct filesystem
-access and doesn't require copy-pasting from artifacts. Kept separate from parsing
-so the CSV review milestone is a hard gate before any code is written.
-
----
-
-## Source of truth principle
-
-Each completed stage produces documentation that stands alone. A future engineer
-(or future Claude session) reading the SKILL.md files should be able to understand:
-- What this stage produces and why
-- How to interpret every output column
-- What decisions were made and why
-- What feeds in and what comes out
-- Known edge cases and how they're handled
-
-The goal is that when this migration is done, the skill files + CSVs + C# classes
-together constitute a complete, auditable record of every rule decision made.
+If defaults run first and resolves all unknown flags, coworker starts with 0
+unresolved. If he finds a new flag in the validations zip, he classifies it
+and updates the shared config.
 
 ---
 
 ## Current blockers
 
-### ⏳ Pending product approval — 3 fields with no LOB checkmarks (Direct reader)
+### ⏳ Pending product approval
 
 | Field | Page | Flow | Question |
 |---|---|---|---|
@@ -199,24 +406,66 @@ together constitute a complete, auditable record of every rule decision made.
 | `RoofUpdatedYear` | Exterior | Agent | Which LOBs apply? |
 | `UnderConstructionCheckList` | Exterior | Agent | Which LOBs apply? |
 
-### 🔲 Skills not yet built
+### 📋 Skills not yet built
 
 | Skill | Blocked on |
 |---|---|
-| `odm-defaults-classify` | User to provide system vs business classification rules |
 | `re-defaults-codegen` | Clean `System_Defaults.csv` + Claude Code setup |
 | `re-validations-codegen` | Clean `Validations.csv` + Claude Code setup |
 | `gap-analysis` | Clean Defaults.csv + Validations.csv + Direct Master CSV |
+| `odm-relevancy` | Defaults workstream complete |
 | `odm-instructions` | Carrier onboarding project (not Progressive migration) |
+
+---
+
+## Future options — not in scope now
+
+### Notion-based smart panel
+
+Design was discussed and parked. Build this after the migration is complete.
+
+**What it is:** A Notion database storing the full Direct field inventory,
+synced incrementally using row-level hash comparison. Teammates query it
+through Claude using the Notion MCP connector — asking questions like
+"what fields are shown on the Exterior page for HO3 with a default value?"
+and getting answers without opening the Excel.
+
+**Two Notion databases planned:**
+- `Progressive Direct — Field Inventory` — one page per field, all metadata as properties, including `Status` (Active / Strikethrough / Deleted), `Row Hash`, `Direct Version`
+- `Progressive Direct — Sync Log` — one entry per sync run, tracking fields added/changed/deleted
+
+**Incremental sync logic:** On each run, compute a SHA256 hash of every field row.
+Compare against hashes stored in Notion. Only push changes — new fields (INSERT),
+modified fields (UPDATE), removed fields (mark Deleted). Unchanged rows cost zero tokens.
+
+**Why Notion over a shared DB:** No infrastructure needed — Notion is already
+connected, shareable with the team, and queryable via Claude's MCP connector.
+
+**When to build:** When the migration is complete and the team needs a queryable
+source of truth for the next carrier onboarding.
 
 ---
 
 ## Key conventions
 
-- **Canonical field name** = strip `PL_F###_` prefix from Field ID; fallback to GetQuote Data Dictionary
-- **LOBs:** HO3 = Homeowners, HO6 = Condo, HO4 = Renters, MFH = Manufactured Home, DF = Dwelling Fire
-- **Flows:** Agent = PAA file, Consumer = HQX file, Both = appears in both
-- **Flag logic, output columns, calculated defaults** → `odm-defaults/SKILL.md`
-- **Validation error extraction** → `odm-validations/SKILL.md`
-- **LOB split logic, known field resolutions** → `direct-reader/SKILL.md`
-- **Shared extraction bugs** → fix in `odm-core/odm_core.py` only
+| Convention | Rule |
+|---|---|
+| Canonical field name | Strip `PL_F###_` prefix from Field ID; fallback to GetQuote Data Dictionary |
+| LOB codes | HO3 = Homeowners, HO6 = Condo, HO4 = Renters, MFH = Manufactured Home, DF = Dwelling Fire |
+| Flow | Agent = PAA file; Consumer = HQX file; Both = appears in both |
+| FlowStage | QQ = Quick Quote, FQ = Full Quote |
+| Control type conflicts | Direct wins — flag and ask if unexpected |
+| Shared extraction bugs | Fix in `odm_core.py` only — never in skill scripts |
+| Scripts | Run as-is — never rewrite, only extend |
+
+---
+
+## Source of truth principle
+
+Each completed stage produces documentation that stands alone. A future engineer
+reading the SKILL.md files should understand: what the stage produces, how to
+interpret every output column, what decisions were made and why, what feeds in
+and what comes out, and all known edge cases.
+
+When this migration is done, the skill files + CSVs + C# classes together form
+a complete auditable record of every rule decision made — reusable for the next carrier.
