@@ -11,6 +11,22 @@ from this file alone — read this first, then open the relevant SKILL.md.
 
 ---
 
+## 📊 Live progress & open issues — read alongside this file
+
+This README is the **methodology / architecture** reference (how the pipeline
+works, what the files are). It intentionally does NOT track session-to-session
+progress. For that:
+
+- **`PROJECT_PROGRESS.md`** — current status of every stage, the Control-Type-
+  Conflict field-by-field table, and the permanent **Decisions Log**. Read this
+  FIRST each session to see where work stands.
+- **`OPEN_ISSUES.md`** — all unresolved issues/blockers with IDs and owners.
+
+> ⚠️ Note on persistence: classification decisions made in chat are not yet
+> auto-applied to the classifier on re-run (see OPEN_ISSUES #6). Until that's
+> fixed, `PROJECT_PROGRESS.md` is the authoritative record of decisions, not the
+> regenerated Review CSV.
+
 ## Repo folder structure
 
 ```

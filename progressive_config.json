@@ -170,11 +170,6 @@
       "always_on": false,
       "reason": "DataDictionary rules excluded \u2014 handled separately. 70/75 fields also have non-DD rules."
     },
-    "Progressive_Interview": {
-      "classification": "SKIP",
-      "always_on": true,
-      "reason": "Always true for Progressive. Rules with IS ENABLED=false do not apply to Progressive."
-    },
     "AMSuitDwellingFireSubmissionODM": {
       "classification": "SKIP",
       "always_on": true,
@@ -331,9 +326,15 @@
       "reason": "Include in conditions."
     },
     "ba_no-of-units": {
-      "classification": "IMPLEMENT",
-      "always_on": null,
-      "reason": "Include in conditions."
+      "classification": "ALWAYS_TRUE_CLEANUP",
+      "always_on": true,
+      "flow": "HQX 1.0 (Consumer 1.0)",
+      "note": "HQX 1.0 (Consumer 1.0) flag that was cleaned, but is ON in LaunchDarkly. ODM is the only source that still keeps this flag. Carriers Homesite and AMIG use it. Treat as always TRUE: rules requiring ba_no-of-units FALSE are dead; rules requiring it TRUE are live. Needs implementation as true/false. On the flag-cleanup list.",
+      "needs_cleanup": true,
+      "carriers": [
+        "Homesite",
+        "AMIG"
+      ]
     },
     "ba_hide-vaulted-and-crown": {
       "classification": "IMPLEMENT",
@@ -351,9 +352,8 @@
       "reason": "Include in conditions."
     },
     "ba_floor-questions-segment": {
-      "classification": "IMPLEMENT",
-      "always_on": null,
-      "reason": "Include in conditions."
+      "classification": "ALWAYS_TRUE_CLEANUP",
+      "note": "On in all environments. Treat as always true; rules requiring it FALSE are dead. Should be cleaned from code."
     },
     "ba_AMSUITE_HO10": {
       "classification": "IMPLEMENT",
@@ -475,11 +475,6 @@
       "always_on": false,
       "reason": "Not found in LaunchDarkly snapshot \u2014 dead/removed flag."
     },
-    "NoReplacementCost": {
-      "classification": "SKIP",
-      "always_on": false,
-      "reason": "Not found in LaunchDarkly \u2014 likely dead/removed flag."
-    },
     "ba_fullquote": {
       "classification": "SKIP",
       "always_on": false,
@@ -515,5 +510,35 @@
       "MHCircuitBreaker": "review_later",
       "MHElectircalUpdated": "review_later"
     }
+  },
+  "progressive_identity_flags": {
+    "note": "Progressive's THREE main identity features. If ANY of them is true, the rule applies to Progressive. Usually only one is used per rule, not multiple. A rule requiring ALL of them to be false does not apply to Progressive.",
+    "flags": [
+      "Progressive_Interview",
+      "NoReplacementCost",
+      "TriageQuestions"
+    ],
+    "most_common": "Progressive_Interview",
+    "semantics": {
+      "Progressive_Interview IS ENABLED = true": "Rule applies to Progressive (most common indicator)",
+      "NoReplacementCost IS ENABLED = true": "Rule applies to Progressive",
+      "TriageQuestions IS ENABLED = true": "Rule applies to Progressive",
+      "any one true": "Progressive rule \u2014 KEEP",
+      "all false / disabled": "Does NOT apply to Progressive \u2014 skip"
+    },
+    "spelling_note": "NoReplacementCost and TriageQuestions are NOT in LaunchDarkly but ARE valid Progressive identity features. Do not treat absence from LD as 'dead'."
+  },
+  "retired_fields": {
+    "TriagePriorCarrierHomeowners": {
+      "status": "RETIRED",
+      "note": "No longer used by Progressive. Any rule using this field as a condition, or defaulting this field, is DEAD/irrelevant.",
+      "impact": "6 default rules use it as a condition (YearsAtAddress, MonthsAtAddress, SelectReasonNoPriorHomeInsurance) + 2 own default rules \u2014 all archived as dead."
+    },
+    "HomeNewPurchase": {
+      "status": "RETIRED",
+      "note": "Old question no longer used. In ODM conditions: only 'is unknown' checks are TRUE (field never set) \u2014 rules requiring a value/known are dead. Still referenced in Direct (needs correction).",
+      "impact": "0 ODM condition rules. Direct: PL_HomeNewPurchase field + referenced in YearsAtAddress default and 5 PreviousAddress display rules (Consumer)."
+    },
+    "_RULE": "For any RETIRED field used in a condition: 'X is unknown' => always TRUE (keep, treat as true); 'X is known' or 'X is <value>' => never matches (dead rule)."
   }
 }
