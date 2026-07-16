@@ -25,10 +25,10 @@ Both files are in `/mnt/project/`. Copy to `/home/claude/` before reading.
 ## How to Run
 
 ```bash
-cp /path/to/sharepoint/PAA_2_0_Direct_Interview.xlsx /home/claude/
-cp /path/to/sharepoint/HQX2_0_Direct_Interview.xlsx /home/claude/
+cp /mnt/project/PAA_2_0_Direct_Interview.xlsx /home/claude/
+cp /mnt/project/HQX2_0_Direct_Interview.xlsx /home/claude/
 pip install openpyxl pandas --break-system-packages -q
-python3 /home/claude/direct-reader/direct_reader.py
+python3 /home/claude/direct_reader.py
 ```
 
 Trigger phrase: **"read directs"**
@@ -319,3 +319,5 @@ After extraction, report:
 - Page names must be normalized before output — downstream skills join on Page name, double spaces break joins
 - HQX blank columns are not always gaps — check for inheritance disclaimer before flagging
 - Do NOT split Field IDs on `/` — `N/A` would be split into `N` and `A`. Split on `\n` only
+
+> **Note (2026-07-15):** the reader currently also skips the HQX `Three Prefill Questions` sheet. Its 6 fields (YearBuilt, SF, ArchitectureStyle, MHArchitectureStyle, Length, Width) appear on other sheets so no data is lost, but this skip should be listed explicitly in the skip config.
