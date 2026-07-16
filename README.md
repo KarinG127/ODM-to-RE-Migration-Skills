@@ -80,7 +80,7 @@ workstream with its own parse → classify → codegen pipeline:
 
 | Rule Type | Owner | Status |
 |---|---|---|
-| **Defaults** | You | 🔄 In progress — parse + classify built |
+| **Defaults** | You | ✅ Classification complete (2026-07-15) — 544 classified (Business 289 / System 143 / Refactor 70 / Investigate 13); 11 Progressive_Preferences rows pending review. Deliverables in outputs. Codegen next. |
 | **Validations** | Coworker | 🔄 In progress — parse built |
 | **Relevancy** | TBD | 📋 Planned |
 | **Stages** | TBD | 📋 Planned |
@@ -378,7 +378,7 @@ Every file in the project, grouped by area:
 |---|---|---|
 | `core/odm_core.py` | ✅ Current | Bug affects both defaults AND validations |
 | `core/odm-core_SKILL.md` | ✅ Current | Core architecture changes |
-| `progressive_config.json` | ✅ Current | New unknown flag encountered during a run |
+| `progressive_config.json` | ✅ Current (labels refined 2026-07-15) | All session flags were already present with correct effective values; 3 were relabeled IMPLEMENT→CLEANUP (ba_fl-carriertrue, ba_tmp_preference_redesign_cr618, ba_yearbuild-default-date). ba_Condo_Redesign was already correct. |
 | `direct_version_cache.json` | ✅ Current | Never edit manually — written by direct_reader.py |
 
 ### Defaults workstream
@@ -388,7 +388,9 @@ Every file in the project, grouped by area:
 | `defaults/odm_defaults.py` | ✅ Current | Run directly — do not rewrite |
 | `defaults/odm-defaults_SKILL.md` | ✅ Current | Full parse documentation |
 | `defaults/odm_defaults_classify.py` | ✅ Current | Run after clean Defaults.csv |
-| `defaults/odm-defaults-classify_SKILL.md` | ✅ Current | Full classify documentation |
+| `defaults/odm-defaults-classify_SKILL.md` | ✅ Current (methodology section added 2026-07-15) | Full classify documentation |
+
+**Defaults deliverables (2026-07-15):** `PGR_Defaults_FINAL_corrected.csv` (526 rows), `PGR_Flags_To_Clean.csv` (10 flags), `PGR_Defaults_Excluded_Reference.csv` (26 excluded, UUIDs). All 570 ODM rules reconcile (544 FINAL + 26 excluded).
 
 ### Validations workstream
 
