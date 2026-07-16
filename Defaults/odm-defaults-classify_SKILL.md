@@ -1,321 +1,308 @@
 ---
-name: direct-reader
-description: "Use this skill whenever you need to extract field inventory from Progressive's Direct Interview Excel files (PAA_2_0_Direct_Interview.xlsx and HQX2_0_Direct_Interview.xlsx) into a structured master CSV. Triggers when the user says 'read directs', 'extract fields from the Direct files', 'build master CSV', 'run direct-reader', or asks to update/sync the master field inventory. Also triggers when a Direct file has been updated and the master CSV needs refreshing. This skill produces the Layer 1 base inventory that all downstream skills (gap-analysis, re-codegen) depend on."
+name: odm-defaults-classify
+description: "Use this skill after odm-defaults has produced a clean Defaults.csv with 0 unresolved flags. Triggers: 'classify defaults', 'run odm-defaults-classify', 'split system and business defaults'. Takes ODM Defaults.csv + Direct Master CSV and classifies each default rule as System (→ RE C# code) or Business (→ SQL database). Raises flags for radio conflicts, agent/consumer divergence, control type conflicts, and gaps. Pipeline stage 2 of the Progressive migration."
 ---
 
-# Direct Reader Skill
+# ODM Defaults Classifier Skill
 
-Extracts the Progressive field inventory from both Direct Interview Excel files
-into a unified master CSV. This is Layer 1 of the migration pipeline —
-pure extraction, no derivation, no ODM data. Everything downstream depends on this output.
+## What this skill does
 
----
+Joins ODM default rules with Direct field metadata to classify each rule as:
 
-## Files
+- **System** → goes into RE as C# `DefaultRuleCollection` classes
+- **Business** → goes into SQL database
+- **Review** → cannot auto-classify, needs human decision before proceeding
 
-| File | Flow | Sheets to skip |
-|---|---|---|
-| `PAA_2_0_Direct_Interview.xlsx` | Agent | DI Guide, Change Control |
-| `HQX2_0_Direct_Interview.xlsx` | Consumer | Version Control |
+This is **Stage 2** of the defaults pipeline:
 
-Both files are in `/mnt/project/`. Copy to `/home/claude/` before reading.
+```
+Defaults.csv  +  Progressive_Direct_Master.csv
+        ↓
+[odm-defaults-classify]
+        ↓
+System_Defaults.csv    →  [re-defaults-codegen]  →  C# classes
+Business_Defaults.csv  →  SQL import
+Review_Defaults.csv    →  human decisions needed
+Gaps_Report.csv        →  missing rules or out-of-scope fields
+Agent_Consumer_Diff.csv → same field, different defaults by flow
+```
 
----
+## Prerequisites
 
-## How to Run
+Both inputs must be ready and confirmed clean before running:
+- `{prefix}_Defaults.csv` from `odm-defaults` — 0 unresolved flags
+- `Progressive_Direct_Master.csv` from `direct-reader`
+
+## How to run
 
 ```bash
-cp /path/to/sharepoint/PAA_2_0_Direct_Interview.xlsx /home/claude/
-cp /path/to/sharepoint/HQX2_0_Direct_Interview.xlsx /home/claude/
-pip install openpyxl pandas --break-system-packages -q
-python3 /home/claude/direct-reader/direct_reader.py
+python3 defaults/odm_defaults_classify.py \
+    --odm    /path/to/PGR_Defaults.csv \
+    --direct /path/to/Progressive_Direct_Master.csv \
+    --output /path/to/output/ \
+    --prefix PGR
 ```
 
-Trigger phrase: **"read directs"**
+## Classification rules
 
-Output: `/home/claude/Progressive_Direct_Master.csv`
-
-Copy to outputs when done:
-```bash
-cp /home/claude/Progressive_Direct_Master.csv /mnt/user-data/outputs/
-cp /home/claude/Progressive_Direct_Warnings.csv /mnt/user-data/outputs/
-```
-
----
-
-## Sheet Handling
-
-| Sheet type | How to identify | Action |
+| Rule | Classification | Logic |
 |---|---|---|
-| Guide/control sheets | DI Guide, Change Control, Version Control | Skip entirely |
-| Standard data sheets | Row 1 = column headers including "Field ID" | Extract normally |
-| Carrier Questions (PAA) | Has carrier columns: HSI, Hippo, Bamboo, PGRH, etc. | Extract with `Carrier` scope — see below |
+| Empty default + `Visible=false` | **System** | Cleaning/reset logic — dependency field changed |
+| Display Rules contains hidden keyword | **Business** | Field is hidden — user never sees it |
+| Default text says "if hidden" / "when hidden" | **Business** | Conditionally hidden — default applies when field is not shown |
+| Control Type (Direct) = Checkbox | **System** | Checkbox field |
+| Control Type (Direct) = Stepper | **System** | 0/1 numeric stepper |
+| Empty default + `Visible=true` (or not set) | **Review** | Not standard cleaning — stop and ask |
+| Everything else | **Review** | Cannot auto-classify — stop and ask |
 
-### Page Name Normalization
-Always normalize sheet tab names on output: trim whitespace, collapse double spaces.
-e.g. `Assumptive -  (Details)` → `Assumptive - (Details)`
-This prevents join mismatches in downstream gap-analysis when matching on Page.
+### Cleaning logic — the confirmed signal
 
----
+A cleaning rule wipes a child field's value when its parent/dependency changes.
+The reliable signal is **empty DefaultValue + `Visible=false`** in the ODM `then`
+block — confirmed across the dataset (101 rules match, independent of folder name).
 
-## Column Mapping
+Do NOT rely on the `_Cleaned-dt` folder name — cleaning rules appear in regular
+folders too (`TheBasics-dt`, `Triage-dt`).
 
-The script maps raw Excel columns to standardized output columns.
-Column names vary slightly between sheets (e.g. "HO3 " vs "HO3") — use `.strip()` on all headers.
+**Dead rules win over cleaning:** a rule with `and false` in its conditions is
+dead garbage and is skipped at the parse stage — even if it has the cleaning
+signature. It never reaches the classifier. (See core SKILL.md — dead rule detection.)
 
-### Standard sheets
+**Empty default + Visible=true** is NOT cleaning — it's flagged
+`EMPTY-DEFAULT-NOT-HIDDEN` for review (e.g. the `CoSSN` fields).
 
-| Output Column | Source Column(s) | Notes |
-|---|---|---|
-| `Field ID` | `Field ID` | e.g. `PL_F472_TypeOfFoundation` |
-| `Canonical Name` | `Field ID` → strip `PL_F###_` prefix; fallback to `GetQuote Data Dictionary` | e.g. `TypeOfFoundation` |
-| `Pre-fill Element` | `Pre-fill Element` | e.g. `PolicyData.TypeOfFoundation` |
-| `Page` | Sheet tab name | e.g. `Exterior` |
-| `Flow` | Source file | PAA = `Agent`; HQX = `Consumer` |
-| `LOBs` | `HO3`, `DF`, `MFH`, `Condo` columns | Collect headers where cell = `v`; map Condo → HO6 |
-| `Label` | `Label` or ` Label` (leading space variant) | Strip whitespace |
-| `Control Type` | `Control Type` or ` Control Type` | Strip whitespace |
-| `Value List` | `Value List` | Raw enum values |
-| `Field Format` | `Field Format` | Numeric / Date / Text / N/A |
-| `Default Value` | `Default value` or `Consumer Default Value` | Raw — no interpretation |
-| `Display Rules` | `Display Rules` | Raw condition text |
-| `Mandatory` | `Mandatory - If Question Displays` | Yes / No |
-| `BOLT Error Message` | `BOLT Error Message` | Validation error text |
-| `Kickout` | `Kickout` | Hard stop condition (PAA only) |
-| `Parent or Child` | `Parent or Child Question` | Parent / Child / blank |
-| `Prefill Values` | `Prefill values` | Vendor prefill values |
-| `Presented if Prefilled` | `Presented if vendor Prefilled` | v / blank |
-| `Presented if Not Prefilled` | `Presented if vendor Not Prefilled` | v / blank |
-| `Carrier` | — | Empty for standard sheets; populated for Carrier Questions sheet |
-| `Source File` | Filename | `PAA` or `HQX` |
+### What counts as hidden
 
-### Carrier Questions sheet (PAA only)
+Three patterns detected:
 
-Same mapping as above except:
-- `LOBs` → from `HO3`, `DF`, `MFH`, `Condo` columns if present
-- `Carrier` → collect carrier column headers where cell = `v` (HSI, Hippo, Bamboo, PGRH, Foremost, AMod, NTW, NatGen, Assurant, Openly, P Rock, American Integrity, Stillwater, Tower Hill)
+**Pattern A — Literal hidden keyword** in Display Rules:
+`hidden`, `not for display`, `not displayed`, `not visible`, `never shown`, `not shown`
 
----
+**Pattern B — Conditional hidden signal** in the default value text:
+`if hidden`, `when hidden`, `if not displayed`, `if not shown`
+e.g. `DwellingOccupancy` default = "If hidden then Owner-Primary" → Business
 
-## Row Handling Rules
+**Pattern C — Conditional hiding (flagged for confirmation)**
+Display Rules have conditions (AND/OR/IF/state) AND default value also references
+conditions (state/if/when/LOB). The field may be hidden for exactly the cases
+where the default applies — like `DogsBreedsSelection` (shown when state NOT in list,
+defaulted when state IS in list = hidden for those states).
+Classifier raises `POSSIBLE-CONDITIONAL-HIDDEN` flag — you confirm Business or not.
 
-### Strikethrough rows
-
-Strikethrough formatting means the field was removed or edited. The rule
-depends on **which cell** is struck — not whether the whole row is struck:
-
-| Condition | Action |
-|---|---|
-| Field ID cell is struck | Skip the entire row — field is deleted |
-| Any other cell(s) struck but Field ID is clean | Keep the row, add `Strikethrough Note` column with: which cell was struck and its original value |
-| No strikethrough | Normal row |
-
-**How to detect strikethrough in openpyxl:**
-```python
-def cell_is_struck(cell) -> bool:
-    return bool(cell.font and cell.font.strike)
-
-def row_strike_status(row_cells: list, header_map: dict) -> tuple:
-    """
-    Returns (skip: bool, note: str)
-    skip=True  → Field ID cell is struck, skip entire row
-    skip=False → keep row; note describes any struck non-Field-ID cells
-    """
-    field_id_col = header_map.get('Field ID')
-    notes = []
-    for cell in row_cells:
-        if not cell_is_struck(cell):
-            continue
-        if cell.column == field_id_col:
-            return True, ''
-        # Non-Field-ID cell struck — note it
-        col_name = next((k for k, v in header_map.items() if v == cell.column), str(cell.column))
-        val = str(cell.value)[:60] if cell.value else '(empty)'
-        notes.append(f'{col_name}: "{val}"')
-    return False, '; '.join(notes) if notes else ''
-```
-
-Add a `Strikethrough Note` column to the master CSV output. Empty = no strikethrough.
-Non-empty = which cells were struck and what they contained.
-
-Do not add a `Status` column for now — Active/Strikethrough/Deleted tracking is
-part of the future Notion design. For now, the Strikethrough Note column is sufficient.
-
-### Skip these rows
-- Field ID starts with `Section:` or `Disclaimer:` — UI dividers, not real fields
-- GetQuote DD column starts with `Section:` or equals `Selected Carrier`, `Prefill Verification`, `Carrier Questions` — PAA Overview pattern where section labels land in the wrong column
-- Field ID is `N/A` or empty AND label is a UI text block (e.g. "We have everything we need...")
-- Field ID is empty AND no label
-
-### Split these rows
-- Field ID cell contains multiple IDs separated by `\n`
-  e.g. `PL_F10_FirstName\nPL_F11_MiddleName\nPL_F12_LastName\nPL_F38_DOB`
-- Split into one row per Field ID, deduplicating by Field ID
-- Each split row gets its own Canonical Name
-- LOBs are re-derived per split field using the original Excel row (see LOB split logic below)
-
-### Keep as-is
-- Everything else with a valid Field ID
-
----
-
-## Canonical Name Derivation
-
-```python
-import re
-
-def canonical_name(field_id, getquote_dd):
-    if field_id and field_id != 'N/A':
-        match = re.match(r'^PL_F\d+_(.+)$', str(field_id).strip())
-        if match:
-            return match.group(1)
-        match = re.match(r'^PL_(.+)$', str(field_id).strip())
-        if match:
-            return match.group(1)
-        return str(field_id).strip()
-    if getquote_dd and str(getquote_dd).strip() not in ('N/A', ''):
-        return str(getquote_dd).strip()
-    return ''
-```
-
----
-
-## LOB Mapping
-
-| Direct column | Master CSV value |
-|---|---|
-| `HO3` | `HO3` |
-| `DF` | `DF` |
-| `MFH` | `MFH` |
-| `Condo` | `HO6` |
-
-Collect all LOB columns where cell value = `v` (case-insensitive, strip whitespace).
-Output as comma-separated string e.g. `HO3, HO6, MFH`.
-If all four present → `All`.
-If none → flag as `LOB_MISSING` — do NOT leave blank. Write to `Progressive_Direct_Warnings.csv`.
-
-### LOB Split Logic (multi-field rows)
-
-When a row is split, LOBs must be re-derived per field from the **original Excel row**, not the normalized `norm` dict. Two patterns exist in the Excel:
-
-**Pattern A — Single `v` covers all fields in the group:**
-```
-Field ID:  PL_F10_FirstName\nPL_F11_MiddleName\nPL_F12_LastName
-HO3 cell:  v         ← one v applies to all three fields
-```
-→ All split fields get the same LOBs.
-
-**Pattern B — One `v` per field (newline-separated):**
-```
-Field ID:  PL_F1278_Farm1to2\nPL_F129_Farm3orMore\nPL_F1280_Exotic
-HO3 cell:  v\nv\nv   ← one v per field
-```
-→ Each split field gets its own LOB value by index.
-
-Implementation: `get_lobs(raw_row, header_map, field_index=i)` where:
-- If `len(parts) == 1` → single v, apply to all fields
-- If `len(parts) > 1` → pick `parts[field_index]`
-
-Always pass the original `row_dict` (keyed by original Excel column names) into `get_lobs`, not the `norm` dict (which uses mapped column names and loses the LOB columns).
-
----
-
-## Known LOB_MISSING Fields — Unresolved
-
-These fields have no LOB checkmarks in the Excel and are pending confirmation. They appear in `Progressive_Direct_Warnings.csv` on every run until resolved.
-
-| Field | Page | Flow | Status |
-|---|---|---|---|
-| `RoofUpdated` | Exterior | Agent | ⏳ Awaiting team clarification |
-| `RoofUpdatedYear` | Exterior | Agent | ⏳ Awaiting team clarification |
-| `UnderConstructionCheckList` | Exterior | Agent | ⏳ Awaiting team clarification |
-
-Once confirmed, add the correct LOBs to the Excel source or handle via a post-processing override in the script.
-
-## Known LOB_MISSING Fields — Resolved
-
-These were previously LOB_MISSING and are now confirmed:
-
-| Field | Page | LOBs | Notes |
-|---|---|---|---|
-| `MailAddressLine1/2`, `MailingZipCode`, `MailCity`, `MailState` | Overview/Owner | All | LOB-agnostic |
-| `PreviousAddressLine1/2`, `PreviousZipCode`, `PreviousCity`, `PreviousState` | Triage/Property | All | LOB-agnostic |
-| `FirstName`, `MiddleName`, `LastName`, `DOB` | Owner/Overview | All | LOB-agnostic |
-| `CoFirstName`, `CoMiddleName`, `CoLastName` | Owner | All | LOB-agnostic |
-| `BusinessOrDaycare`, `TypeOfBusinessDD` | Owner | All | LOB-agnostic |
-| `DoYouHaveLosses` | Final Details | All | LOB-agnostic |
-| `AnimalsOnThePremises_Farm1to2/3orMore/Exotic` | Assumptive | All | Multi-field split row |
-| `SmokeDetector`, `FireExtinguisher`, `SprinklerSystem`, `FireDetection` | Discount | All | Multi-field split row |
-| `PoolFeatures_Slide`, `RemovableLockableLadder`, `PoolFeatures_ScreenEnclosure/SurroundingWall/OtherPoolBarrier` | Exterior/Assumptive | HO3, DF, MFH | Multi-field split row |
-| `HotTubFeatures_ScreenEnclosure/SurroundingWall/OtherHotTubBarrier/LockableLid` | Exterior/Assumptive | HO3, DF | Multi-field split row |
-| `FuelTanksBelowGround` | Carrier Questions | HO3 | Bamboo carrier only |
-
----
-
-## Direct Sync (when Direct file is updated)
-
-### Current approach — version-based full re-read
-
-When the user uploads an updated Direct file or says "sync the direct":
-
-1. Read the **Change Control / Version Control** sheet first (cheap — one sheet, few rows)
-2. Extract the latest version number from the `Version` column (last non-empty row)
-3. Compare against the version stored in `direct_version_cache.json` (written after every run)
-4. If version is the same → skip, tell the user nothing changed, do not re-read
-5. If version changed → full re-read of all sheets → overwrite `Progressive_Direct_Master.csv`
-6. Update `direct_version_cache.json` with the new version number
-7. Report: version before → after, total fields extracted, any new strikethrough fields found
-
-**Cache file format** (`direct_version_cache.json`):
-```json
-{
-  "paa_version": "2.1",
-  "hqx_version": "1.4",
-  "paa_last_read": "2025-07-05",
-  "hqx_last_read": "2025-07-05"
-}
-```
-
-Store this file alongside the script in the repo so both team members share the
-same version baseline. Commit it after every sync run.
-
-Trigger phrases: **"sync the direct"** / **"direct was updated"** / **"read directs"**
-
-Note: "read directs" always checks version first. Full re-read only happens if
-version changed or no cache exists yet.
-
-### Future — incremental field-level sync (Notion)
-
-A more token-efficient approach using Notion as the queryable store with row-level
-hash comparison is planned. See README.md — Future Options section. Not built yet.
-Build this when the migration is complete and the smart panel work begins.
-
----
-
-## Output
+## Outputs
 
 | File | Contents | Written when |
 |---|---|---|
-| `Progressive_Direct_Master.csv` | Full field inventory — one row per field per page per flow | Always |
-| `Progressive_Direct_Warnings.csv` | Fields with no LOBs, items needing investigation | Non-empty only |
+| `{prefix}_System_Defaults.csv` | Rules classified as System | Always |
+| `{prefix}_Business_Defaults.csv` | Rules classified as Business | Always |
+| `{prefix}_Review_Defaults.csv` | Rules needing human decision | Non-empty only |
+| `{prefix}_Gaps_Report.csv` | ODM-only and Direct-only gaps | Non-empty only |
+| `{prefix}_Agent_Consumer_Diff.csv` | Fields with different defaults per flow | Non-empty only |
+| `{prefix}_Field_Duplication_Issues.csv` | Duplicate field pairs (base + PL_ twin) — **review with product** | Non-empty only |
 
-After extraction, report:
-- Total rows extracted
-- Rows per flow (Agent / Consumer)
-- Rows per page
-- Any rows skipped and why
-- Any multi-field rows that were split
-- Any fields written to Warnings CSV
+### Field duplication issues — important, kept separate
+
+Some fields exist twice in the ODM under different names: a base field and a
+`PL_`-prefixed twin (e.g. `NumberCarSpace` + `PL_NumberCarSpace`). The non-PL
+field typically holds an `OdmDefault` as a word value (`"Two"`) while the PL_
+field holds the real typed input (`2` from `ConsumerInput`) — confirmed via the
+Policy Data Audit screen.
+
+This is a data-integrity issue, NOT a value-format bug. These pairs need product
+review to consolidate to one field. They are written to a dedicated
+`Field_Duplication_Issues.csv` — separate from the general Review pile — because
+they are important enough to track on their own. Each row includes the UUID for
+ODM traceability.
+
+Detected in HQ2 run: `NumberCarSpace / PL_NumberCarSpace` and
+`HowManyTimesInOneCalendarYear / PL_HowManyTimesInOneCalendarYear`.
+
+## Key columns in output CSVs
+
+All output files carry the original ODM columns plus these enriched columns:
+
+| Column | Description |
+|---|---|
+| `Canonical` | Stripped field name used for join (`PolicyData/X` → `X`) |
+| `Direct Control Type` | Control type from Direct (authoritative) |
+| `Direct Display Rules` | Raw display rules from Direct |
+| `Direct Default Value` | Default value as specified in Direct (may differ from ODM) |
+| `Direct LOBs` | LOBs from Direct (cross-check against ODM LOBs) |
+| `Classification` | System / Business / Review |
+| `Classification Reason` | Why this classification was assigned |
+| `Flags` | Pipe-separated special flags (see below) |
+
+## Special flags — stop and ask on these
+
+### POSSIBLE-CONDITIONAL-HIDDEN
+Display Rules have conditions (AND/OR/IF/state) and the default value also
+references conditions. The field is likely hidden for exactly the cases where
+this default applies — like `DogsBreedsSelection` (visible when state NOT in
+[AZ,CO,...], defaulted when state IS in [AZ,CO,...] = hidden for those states).
+
+**Action:** Confirm whether the field is hidden for the conditions the default
+applies to. If yes → Business. If no → leave in Review for further decision.
+
+### RADIO-CONFLICT
+ODM has a default value for a field that Direct classifies as Radio or Segmented
+Controls. ODM treats radio buttons as checkboxes — Direct is the source of truth.
+
+**Action:** (1) Should this default exist in RE at all? (2) Is the field ever
+hidden? If hidden → Business. If never hidden → needs separate decision.
+
+### CONTROL-TYPE-CONFLICT
+ODM's `FieldControl` attribute and Direct's `Control Type` column disagree.
+Direct wins per convention, but verify.
+
+**Action:** Check the actual UI. Confirm which control type is correct.
+
+### ODM-ONLY
+Field has an ODM default rule but does not appear in the Direct at all.
+
+**Action:** Verify the field is in scope. If it's an internal system field
+not shown in the interview, classify manually. If it shouldn't exist, flag for cleanup.
+
+## Gap types in Gaps_Report.csv
+
+| Gap Type | Meaning | Action |
+|---|---|---|
+| `ODM-ONLY` | ODM rule exists, field not in Direct | Verify field is in scope |
+| `DIRECT-ONLY` | Direct specifies a default, no ODM rule exists | Rule must be written in RE from scratch |
+
+Direct-only gaps are the most important — these are defaults defined in the
+product spec that never made it into ODM, meaning they are currently missing
+from the system entirely.
+
+## Agent/Consumer divergence
+
+`Agent_Consumer_Diff.csv` lists fields where the same canonical field has
+different default values for Agent flow vs Consumer flow.
+
+This is not necessarily wrong — some defaults are intentionally different
+between PAA 2.0 and HQX 2.0. But each difference must be confirmed as
+intentional before writing the RE rules.
+
+**Pattern to watch for:** if Agent default = `false` and Consumer default = `true`
+(or vice versa), this means two separate RE rules will be needed, one per flow.
+
+## Join logic
+
+ODM `Field Name` → strip `PolicyData/` prefix → match to Direct. The match tries
+**multiple Direct name columns**, not just one, because a field may be named
+differently across them:
+
+1. `Canonical Name`
+2. `Pre-fill Element` (with `PolicyData.` prefix stripped)
+3. `GetQuote_DD`
+4. `Platform Field`
+
+The ODM field name is matched against all four (case-insensitive). This resolves
+the common case where ODM uses the short name and Direct's `Canonical Name` uses
+a numbered or prefixed variant (e.g. ODM `HomeSkirted` → Direct `IsTheHomeSkirted`
+via the GetQuote_DD column). Adding the multi-column join resolved 75 previously
+unmatched fields in the HQ2 run.
+
+### Confirmed mapping decisions
+
+User-confirmed field mappings are stored in `{prefix}_Field_Mapping_Decisions.csv`
+and loaded on every run:
+- **SAME FIELD** decisions remap the ODM name to the Direct canonical so the join succeeds
+- **DIFFERENT FIELD** decisions are suppressed from the spelling report so they're not re-flagged
+
+This file is the permanent record — once a spelling/near-match pair is confirmed,
+it never needs re-asking. Commit it alongside the other outputs.
+
+### Parent-child multi-select fields
+
+Some ODM fields are `...Multi[]` children of a boolean parent (e.g.
+`BurglarAlarmTypeMulti[]` is the checkbox child of the boolean parent
+`BurglarAlarm`; `FinancialHardshipsMulti[]` is the child of `PL_Foreclosure`).
+These map to the single Direct field — confirmed same field in the mapping decisions.
+
+## What this skill does NOT do
+
+- Does not generate C# code — that is `re-defaults-codegen` (future, Claude Code)
+- Does not import to SQL — that is a separate database operation
+- Does not modify the Direct or ODM files
+- Does not re-run the ODM parser — always start from a confirmed clean `Defaults.csv`
+
+## Next steps after clean classification
+
+Once `Review_Defaults.csv` is empty (all items resolved) and both System and
+Business CSVs are confirmed:
+
+→ **System_Defaults.csv** → hand off to `re-defaults-codegen` (Claude Code)
+  to generate `DefaultRuleCollection` C# classes directly into the repo.
+
+→ **Business_Defaults.csv** → hand off to database team for SQL import.
+
+
+## Fixes applied (Issue #11)
+
+- **(a) Control-type synonyms** — `normalize_ct` maps semantic synonyms and messy
+  multi-word labels to a canonical token (`numeric` ≡ `Input field (Numeric)`;
+  `Date Field with calendar` → `date`; `Number Stepper` → `stepper`), removing
+  false `CONTROL-TYPE-CONFLICT`. Genuine widget mismatches still surface.
+- **(b) Computed-date defaults** — checked before control-type logic; formulas
+  (`today's year - N`, `PurchaseDate month/15/year`) and cross-field date copies
+  are tagged `COMPUTED-DATE-DEFAULT` and routed to Review.
+- **(c) Disabled=true display-locks** — parser now extracts `Disabled`; classifier
+  routes `Disabled=true` rows out of defaults with `DISABLED-DISPLAY-LOCK`.
+- **(e) Enum-label normalization** — `--enum-norm PGR_Enum_Label_Normalization.json`;
+  field-scoped ODM-value→Direct-label map (`cov5000`≡`$5k`, `true`≡`Yes`). SAFE-only:
+  no generic prefix stripping; genuine code→label needs an explicit map entry or the
+  AppData enum table. Adds a `Default Match (norm)` column and normalizes the
+  Agent/Consumer diff.
+- **Spelling suggester** — never proposes merging `PreDateOccupied1`/`DateOccupied`
+  or `PreEffectiveDate1`/`EffectiveDate` (a `pre` prefix changes field meaning).
+
+## FINAL build + overrides + merge (2026-07-15)
+- **Condition-aware flow merge:** collapse ONLY rules identical except the `Claim:InterviewFlowType_(Agent|Consumer)`
+  flag (same field + default + flow-agnostic condition). Never merge on default value alone. Keep `Merged Rule Count`
+  + `Merged UUIDs`; sum must equal the input rule count (proof of no loss).
+- **Two extra buckets:** `Refactor` (remove from interview) and `Investigate` (need carrier info) — no default classification.
+- **Field overrides:** update family (heating/electrical/plumbing +Year) → Business (value) / System (cleaning);
+  DogsBreedsSelection → Business; PAA Carrier Questions page → Business; PLDfForm → Business.
+- **Coverage** column: BOTH / ODM-ONLY / DIRECT-ONLY (Direct↔ODM match via name aliases in Field_Mapping_Decisions).
+- **Flags:** VALUE-MISMATCH (Direct wins), MISSING-IN-DIRECT-CONSUMER, CARRIER-DEPENDENCY, CONTROL-TYPE-CROSS-FLOW.
 
 ---
 
-## Notes
+## Classification buckets, exclusions & FINAL build (reusable methodology — added 2026-07-15)
 
-- Column headers have inconsistencies across sheets — always `.strip()` all header names before matching
-- Most PAA sheets have `HO3 ` (trailing space) in the header — strip handles this
-- Carrier Questions sheet has many more columns than standard sheets — unknown columns are ignored
-- `2.0 consumer mapping` and `Legacy mapping` columns are informational only — captured as-is
-- `Version` column tracks which sprint introduced the field — essential for direct-sync, always capture
-- Page names must be normalized before output — downstream skills join on Page name, double spaces break joins
-- HQX blank columns are not always gaps — check for inheritance disclaimer before flagging
-- Do NOT split Field IDs on `/` — `N/A` would be split into `N` and `A`. Split on `\n` only
+This section is the reusable layer (there is deliberately **no consolidation script** — the FINAL merge is
+tenant-specific and done by command, guided by this doc).
+
+### Classification buckets
+- **Business** — value default sent to the business/DB layer. Includes concrete enum/numeric/boolean values,
+  computed defaults (date arithmetic, YearsAtAddress bands), and cross-field/mapped value copies.
+- **System** — cleaning rules (empty/blank default), stage-init rules (e.g. `*=Initialized`).
+- **Refactor** — field being removed from the tenant interview. Keep in the list (tagged) so carriers depending
+  on it can be verified before removal; do not build as an RE default.
+- **Investigate** — needs external carrier/vendor info to decide.
+
+### Exclusions (route to a reference CSV with UUID + reason — NOT into the FINAL)
+- **Dead rule** — a flag-gated branch that can never fire (flag is always the opposite state), a rule keyed on a
+  retired field being *known*, an option that doesn't exist (e.g. `is one of {Apartment}` when Apartment is
+  irrelevant), or an NA-only condition.
+- **Display-lock** — `Disabled=true` + self-referential default (field = itself). It re-shows an existing value
+  greyed out; it is relevancy, not a default.
+- **Parse-artifact** — default value == a field named in the same condition (e.g. `NunMajorViolationsLast3Years`,
+  `BPPComputerEquip`, `FaultClamisNum3Y`). Do not migrate; verify raw `.m`.
+- **Self-referential** — default == the field itself → irrelevant, ignore.
+- **Irrelevant-to-tenant** — field not used by this tenant (confirm with product).
+
+### Flag handling
+For each `ba_*` / feature flag, get its LD state (all-envs) and its ODM reference direction:
+- Flag always ON  → rules gated `flag=true` are LIVE; rules gated `flag=false` are DEAD. Implement flag TRUE, add to cleanup tracker.
+- Flag always OFF → the reverse. Implement FALSE, add to cleanup tracker.
+Record every flag in `PGR_Flags_To_Clean.csv` with: disposition, always-state, code-ref, ODM-ref, user-story, action.
+Flag states are baked into the parser output, so flag config only matters on a **re-parse**.
+
+### FINAL build (by command)
+1. Combine classifier outputs (System/Business/Review) + Direct-only gaps into one table.
+2. Condition-aware flow merge: collapse ONLY rules identical except the `Claim:InterviewFlowType_(Agent|Consumer)`
+   flag. Keep `Merged Rule Count` + `Merged UUIDs`; the UUID sum must equal the input rule count (proof of no loss).
+3. Coverage = BOTH / ODM-ONLY / DIRECT-ONLY (Direct↔ODM matched via name aliases, incl. `PL`-prefix twins).
+4. Walk Product-Review with product in batches of ~15; write decisions into the FINAL (Classification + Reason).
+5. Route exclusions to the reference CSV. **Reconcile**: every input UUID must appear in FINAL or the reference.

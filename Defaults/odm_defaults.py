@@ -43,7 +43,7 @@ from typing import Optional
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
 from odm_core import (
-    read_odm_file, should_skip_file, extract_flags, extract_lobs,
+    read_odm_file, should_skip_file, skip_reason, extract_flags, extract_lobs,
     extract_conditions, simplify_conditions, load_config, save_config, write_csv
 )
 
@@ -166,12 +166,18 @@ def get_review_reason(r: dict, content: str, config: dict) -> str:
 
 def parse_odm_file(filepath: str, config: dict, source_flags: set) -> Optional[dict]:
     content = read_odm_file(filepath)
+    uuid = os.path.basename(filepath).replace('.m', '')
 
-    if should_skip_file(content, config):
-        return None
+    sr = skip_reason(content, config)
+    if sr:
+        fm0 = re.search(r'fieldId\s*=\s*"PolicyData/([^"]+)"', content)
+        bm0 = re.search(r'ilog\.rules\.business_name\s*=\s*"([^"]+)"', content)
+        return {'_skip': True, 'uuid': uuid, 'skip_reason': sr, 'source_file': filepath,
+                'field_name': (fm0.group(1) if fm0 else None),
+                'business_name': (bm0.group(1) if bm0 else None)}
 
     r = {}
-    r['uuid'] = os.path.basename(filepath).replace('.m', '')
+    r['uuid'] = uuid
 
     pkg = re.search(r'ilog\.rules\.package_name\s*=\s*"([^"]+)"', content)
     r['page'] = pkg.group(1).split('.')[-1] if pkg else None
@@ -197,7 +203,11 @@ def parse_odm_file(filepath: str, config: dict, source_flags: set) -> Optional[d
     # Skip files where a non-source flag is confirmed inactive
     for f in r['ba_flags_raw']:
         if f['base'] not in source_flags and f.get('fires') is False:
-            return None
+            return {'_skip': True, 'uuid': r['uuid'], 'source_file': filepath,
+                    'skip_reason': f"Inactive flag: {f['flag_full']} IS ENABLED={f['condition_result']} "
+                                   f"→ fires=False ({f['classification']})",
+                    'field_name': r.get('field_name'), 'business_name': r.get('business_name'),
+                    'flow': r.get('flow'), 'conditions': r.get('conditions')}
 
     r['review_reason'] = get_review_reason(r, content, config)
 
@@ -253,6 +263,7 @@ def build_row(r: dict, source_flags: set) -> dict:
         'Control Type':          r.get('control_type', ''),
         'Mandatory':             r.get('mandatory', ''),
         'Relevant':              r.get('relevant', ''),
+        'Visible':               r.get('visible', ''),
         'Sequence':              r.get('sequence', ''),
         'Needs Review':          'YES' if r.get('needs_review') else 'NO',
         'Unknown Flags':         ', '.join(r.get('unknown_flags', [])),
@@ -290,10 +301,18 @@ def build_stage_row(r: dict) -> dict:
 # ── Output Building ───────────────────────────────────────────────────────────
 
 def _build_dataframes(records: list, source_flags: set, config: dict) -> dict:
-    main_records   = [r for r in records if not r.get('review_reason')]
+    kept_records   = [r for r in records if not r.get('review_reason')]
     review_records = [r for r in records if r.get('review_reason')]
 
-    stage_rows = [build_stage_row(r) for r in main_records
+    # DEFAULTS OUTPUT = only rules that set a `DefaultValue VALUE` in the `then`
+    # block (detect_rule_type marks these 'Default'). Relevancy/Stage rules carry
+    # no DefaultValue and belong to the Relevancy migration stage — they are kept
+    # in a separate file, not in the main defaults output.
+    default_records        = [r for r in kept_records if r.get('rule_type') == 'Default']
+    relevancy_stage_records = [r for r in kept_records if r.get('rule_type') in ('Relevancy', 'Stage')]
+    main_records = default_records
+
+    stage_rows = [build_stage_row(r) for r in kept_records
                   if r.get('rule_type') == 'Stage' and r.get('field_name')]
 
     unresolved = []
@@ -314,12 +333,14 @@ def _build_dataframes(records: list, source_flags: set, config: dict) -> dict:
 
     return {
         'main':       pd.DataFrame([build_row(r, source_flags) for r in main_records]),
+        'relevancy':  pd.DataFrame([build_row(r, source_flags) for r in relevancy_stage_records]),
         'review':     pd.DataFrame([build_row(r, source_flags) for r in review_records]),
         'stage':      pd.DataFrame(stage_rows).sort_values('Status') if stage_rows else pd.DataFrame(),
         'unresolved': pd.DataFrame(unresolved).drop_duplicates(subset=['flag']) if unresolved else pd.DataFrame(),
         'active':     pd.DataFrame(active)  if active  else pd.DataFrame(),
         'retired':    pd.DataFrame(retired) if retired else pd.DataFrame(),
-        '_counts':    {'main': len(main_records), 'review': len(review_records)},
+        '_counts':    {'main': len(main_records), 'relevancy': len(relevancy_stage_records),
+                       'review': len(review_records)},
     }
 
 
@@ -332,6 +353,7 @@ def _write_outputs(dfs: dict, output_dir: str, prefix: str):
             write_csv(df, os.path.join(output_dir, f"{prefix}_{name}.csv"))
 
     write_csv(dfs['main'],               os.path.join(output_dir, f"{prefix}_Defaults.csv"))
+    write_if_nonempty(dfs['relevancy'],  'Relevancy_Stage_Rules')
     write_if_nonempty(dfs['review'],     'Review_Later')
     write_if_nonempty(dfs['stage'],      'Stage_Rules_Review')
     write_if_nonempty(dfs['active'],     'Active_Flags')
@@ -343,7 +365,7 @@ def _write_outputs(dfs: dict, output_dir: str, prefix: str):
 
 def parse_all(root_dir: str, config: dict, output_dir: str, prefix: str = 'PGR'):
     source_flags = set(config.get('source_flags', {}).get('identity_flags', []))
-    records, errors, skipped = [], [], 0
+    records, errors, skipped_rows = [], [], []
 
     for dirpath, _, filenames in os.walk(root_dir):
         for fname in filenames:
@@ -353,7 +375,20 @@ def parse_all(root_dir: str, config: dict, output_dir: str, prefix: str = 'PGR')
             try:
                 r = parse_odm_file(fpath, config, source_flags)
                 if r is None:
-                    skipped += 1
+                    skipped_rows.append({'UUID': fname.replace('.m', ''), 'Category': 'Other',
+                                         'Skip Reason': 'Unclassified skip', 'Source File': fpath})
+                elif r.get('_skip'):
+                    reason = r['skip_reason']
+                    cat = ('SectionClaim' if reason.startswith('SectionClaim') else
+                           'CustomField'  if reason.startswith('CustomField') else
+                           'Skip-Flag'    if reason.startswith('Skip flag')   else
+                           'Dead-Rule'    if reason.startswith('Dead rule')   else
+                           'Inactive-Flag' if reason.startswith('Inactive')   else 'Other')
+                    skipped_rows.append({
+                        'UUID': r['uuid'], 'Category': cat, 'Skip Reason': reason,
+                        'Field Name': r.get('field_name') or '', 'Business Name': r.get('business_name') or '',
+                        'Flow': r.get('flow') or '', 'Full Condition': r.get('conditions') or '',
+                        'Source File': os.path.relpath(r['source_file'], root_dir)})
                 else:
                     records.append(r)
             except Exception as e:
@@ -363,12 +398,22 @@ def parse_all(root_dir: str, config: dict, output_dir: str, prefix: str = 'PGR')
     df_errors = pd.DataFrame(errors) if errors else pd.DataFrame()
 
     _write_outputs(dfs, output_dir, prefix)
+    if skipped_rows:
+        cols = ['UUID', 'Category', 'Skip Reason', 'Field Name', 'Business Name', 'Flow',
+                'Full Condition', 'Source File']
+        sk = pd.DataFrame(skipped_rows)
+        for c in cols:
+            if c not in sk.columns: sk[c] = ''
+        write_csv(sk[cols], os.path.join(output_dir, f"{prefix}_Dead_Ignored_Rules.csv"))
     if not df_errors.empty:
         write_csv(df_errors, os.path.join(output_dir, f"{prefix}_Parse_Errors.csv"))
 
+    skipped = len(skipped_rows)
+
     needs_review_count = len(dfs['main'][dfs['main']['Needs Review'] == 'YES']) if not dfs['main'].empty else 0
     print(f"\nParsed:           {len(records)} rules")
-    print(f"  Main:           {dfs['_counts']['main']}")
+    print(f"  Defaults:       {dfs['_counts']['main']}  (DefaultValue-bearing → main output)")
+    print(f"  Relevancy/Stage:{dfs['_counts']['relevancy']}  (no DefaultValue → separate file)")
     print(f"  Review Later:   {dfs['_counts']['review']}")
     print(f"Skipped:          {skipped}")
     print(f"Needs review:     {needs_review_count}")
