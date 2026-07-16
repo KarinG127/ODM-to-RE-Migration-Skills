@@ -47,10 +47,21 @@ fix it in the skill-specific script, not here.
 ## V2 fixes documented here
 
 **Fix 1 — Dead rule detection (V2)**
-Previous regex `\band\s+false\s*\)` missed cases without trailing `)`.
+Previous regex missed cases without a trailing paren.
 V2 strips all legitimate `is false` patterns (field checks + flag checks) from
 each BAL line first, then checks for bare `and false`. This means `SomeField is false`
 is never mistaken for a dead rule marker.
+
+**Dead rule decision (confirmed on Progressive HQ2 dataset):**
+- If `and false` appears in the condition block before `then`, the rule is DEAD.
+- The ODM was never cleaned — it is full of disabled rules kept for reference.
+- Dead rules are skipped entirely, no matter what else they contain.
+- A rule with the cleaning signature (empty default + `Visible=false`) that ALSO
+  has `and false` is still dead garbage — dead wins. 106 dead rules found and
+  skipped in the HQ2 run; 14 of them had a cleaning-like signature but are correctly
+  treated as dead.
+- Match is kept simple: any `and false` in conditions = dead. The only nuance is
+  stripping legitimate `is false` field/flag checks first (Fix 1 above).
 
 **Fix 2 — Flow classification (V2)**
 Previous approach read only the Claim flag name. V2 reads both the flag name
