@@ -1,10 +1,89 @@
 # Progressive ODM→RE Migration — Progress Tracker
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-15
 **Purpose:** Single source of truth for where the migration stands. Read this first each session.
 
 > Record every decision in the Decisions Log so it never has to be re-derived.
 > This file + the CSVs travel together.
+
+---
+
+## ▶ RESUME HERE (handoff — read before doing anything)
+
+**Stage:** Defaults (1 of 4). **FINAL corrected + all decisions captured in an overlay.** Direct regenerated from product's
+updated files. Next hard task: script the consolidation so reruns are reproducible (Issue #20). See `HANDOVER.md`.
+
+**Authoritative files (travel together):**
+- `HANDOVER.md` (read first) · `PROJECT_PROGRESS.md` (this file) · `OPEN_ISSUES.md`
+- `PGR_Defaults_FINAL_corrected.csv` — THE deliverable (544 lines; #1–#5 + batch applied).
+- `PGR_Defaults_FINAL_corrected.csv` (526) is THE source of truth (Classification + Classification Reason). NOTE: the overlay JSON and the consolidation-script idea were both DESCOPED (one-time migration, tenant-specific merge-by-command). Product Outcome column retired.
+- `PGR_Defaults_Excluded_Reference.csv` (26) — dead/stage/display-lock/parse-artifact/irrelevant rules + UUIDs.
+- `Progressive_Direct_Master.csv` — regenerated from updated Direct (PAA v22 / HQX 12.9, 515 rows).
+- `PGR_Flags_To_Clean.csv` (9) · `PGR_Defaults_Stage_Only_Removed.csv` · `PGR_Defaults_Field_Mapping_Decisions.csv` (8 name aliases).
+
+**Current numbers (FINAL):** **526 rows**; classification **Business 289 · System 143 · Refactor 70 · Investigate 13 · Product-Review 11** (0 unclassified). All 570 ODM UUIDs reconcile: 544 in FINAL + 26 in PGR_Defaults_Excluded_Reference.csv. Only remaining review = 11 Progressive_Preferences rows.
+Classification: **Business 184 · Product-Review 171 · System 141 · Refactor 27 · Investigate 21 · 0 unclassified.**
+(552→544: dropped 2 ReplacementCost, 4 stage-only, 1 PreEffectiveDate dup, 1 Houseoccup corrupt, 1 Electrical bug; +2 Houseoccup split.)
+
+**Merge rule:** collapse ONLY rules identical except the flow flag (same field+default+flow-agnostic condition).
+Different conditions never merge. Rationale: ODM worked per-stage (same default can appear twice); RE sends all
+at once, so stage-duplicate twins are safe to merge.
+
+**Two new classification buckets this session:** `Refactor` (remove from PGR interview) and `Investigate`
+(need carrier info). These rows get NO default classification.
+
+**Next session (in priority order):**
+1. **Build `odm_defaults_consolidate.py`** (Issue #20) — script the documented FINAL merge + field-overrides + Coverage + Refactor/Investigate, consuming the overlay. Validate against `PGR_Defaults_FINAL_corrected.csv`.
+2. **Rerun end-to-end** (classifier → consolidate → overlay) on the updated Direct so the 46 Direct-affected Product-Review rows re-resolve (Issue #24).
+3. **Field-by-field** through the resulting Product-Review WITH the user; each answer → overlay by UUID.
+4. Refactor (27) / Investigate (21) carrier verifications (Issue #17).
+5. Flags (Issue #21): add the 3 flags to `progressive_config.json`; interview-JSON / ODM cleanup for ba_fl-carriertrue & ba_tmp_preference_redesign_cr618.
+6. Start Stages 2–4 (Validation, Relevancy, Stages).
+
+**Conventions:** Direct wins on default mismatch · merge only identical-condition flow twins · product decides,
+tag eng calls "pending product confirm" · **overlay (`PGR_Defaults_Decisions.json`) is the single source of product decisions; Product Outcome retired** · ODM currently untouched (no re-parse needed) · don't edit the classifier skill without approval.
+
+---
+
+## Session changelog — 2026-07-15 (session 2 close-out)
+
+- **Product-Review walk COMPLETE**: 171 → 11 (only Progressive_Preferences1/2 remain, marked PENDING REVIEW). ~150 rows reclassified via product decisions in batches of ~15.
+- **All 570 ODM rules reconciled**: 544 classified in FINAL + 26 in PGR_Defaults_Excluded_Reference.csv (incl. 4 early/pre-chat drops recovered: ElectircalUpdatedYear bug, PL_Houseoccup artifact, PL_VaultedCeilings & PL_CrownMolding pre-chat hide-vaulted-and-crown exclusions).
+- **Overlay JSON + consolidation-script DESCOPED** (Issues #6, #20 closed) — FINAL CSV is the single source; reusable layer is skill docs.
+- **Date cluster** resolved (Issue #3): computed date defaults→Business; EffectiveDate display-lock routed out.
+- **Flags tracker → 10** (added ba_yearbuild-default-date; corrected ba_Condo_Redesign to always-TRUE). Config pending future re-parse only.
+- **Carrier RC1 review** (Issue #9) resolved: enum(false)=UI(No); ODM/Direct values stand.
+- New HANDOVER.md written for the next chat.
+
+---
+
+## Session changelog — 2026-07-15 (continuation / session 2)
+
+- **Review findings addressed #1–#5** + batch: RC dropped; ActualCashValue→Business (cross-field); LivingTime→PL_LivingTime Business; DwellingOccupancy→Business; Bankruptcy→Business; PreEffectiveDate1→Business (deduped); PL_Houseoccup split System/Business (corrupt row dropped); ElectircalUpdatedYear bug `01b5f03f` dropped + 3→Business; 4 stage-only rows removed to `PGR_Defaults_Stage_Only_Removed.csv`; PlumbingUpdated confirmed ODM twin.
+- **Overlay created** `PGR_Defaults_Decisions.json` — 389 UUID overrides harvested + explicit decisions. Closes most of Issue #6.
+- **Flags:** +`ba_fl-carriertrue` (FALSE), +`ba_abtest-naming-convention` (TRUE), +`ba_tmp_preference_redesign_cr618` (TRUE) → tracker now 9 (Issue #21).
+- **Direct regenerated** from product's updated files (PAA v22 / HQX 12.9); found 46/171 Product-Review rows newly match (Issue #24).
+- **KEY FINDING:** FINAL build is unscripted — logged as HIGH Issue #20; consolidation script is the next build.
+- **Product Outcome retired** — overlay is the single source going forward.
+
+---
+
+## Session changelog — 2026-07-15 (session 1)
+
+- **Full rerun** from raw ODM (1692 files); reconciled against last session's FINAL — 0 defaults lost logically
+  (5 UUID diffs explained: 3 dead always-ON false-branches, 2 ApplicantYearofBirth = table move / new UUIDs).
+- **Classifier skill fixes applied (Issue #11 a/b/c/e)** + spelling guard. Skill docs updated.
+- **Parser:** main output is DefaultValue-only; relevancy/stage split to `_Relevancy_Stage_Rules.csv`; dead/ignored
+  archive `_Dead_Ignored_Rules.csv` (per-UUID reason); `Disabled` attribute extracted.
+- **New classification logic:** Carrier Questions page → Business; PLDfForm (92) → Business; checkbox both-flow;
+  flags VALUE-MISMATCH (Direct wins) / MISSING-IN-DIRECT-CONSUMER / CARRIER-DEPENDENCY / CONTROL-TYPE-CROSS-FLOW.
+- **Name mappings (8)** encoded; `F1832_PreEffectiveDate1` renamed to `PreEffectiveDate1`.
+- **Field overrides:** update family → Business (cleaning→System); DogsBreedsSelection → Business;
+  Refactor set (Burglar/Fire/MitRoof/NumberOfChildren/HomeNewPurchase/TriagePriorCarrier);
+  Investigate set (MitSecWaterResis/DealershipPurchase/Swimming/Trampoline/Pool/AdditionalStructures/NumberOfChildernsUnder18).
+- **Config:** ba_hide-vaulted-and-crown + ba_hide-current-carrier → ALWAYS_TRUE_CLEANUP; flags-to-clean now 7.
+- **Product docs reconciled:** MASTER_2 authoritative, merged with old (5 recovered outcomes).
+- **FINAL rebuilt** in merged old-file style + condition-aware flow merge; Coverage + Prior Classification + Changed flag.
 
 ---
 
@@ -236,12 +315,15 @@ ODM-ONLY (519 rows) splits into two groups:
     - ElectricCircuitBreaker, AnimalsOnThePremises_None, PLHaveAnyLosses → product.
     - **REVIEW fields: ✅ ALL 39 DONE.** Results in `PGR_Defaults_Classified.csv`.
       **STILL TODO before final output:**
-      1. Direct-only / prose-logic defaults (Issue #16, HIGH) — 45 prose-logic in
-         `PGR_Direct_Defaults_ProseLogic_HOLD.csv` + DIRECT-ONLY defaults. YearsAtAddress
-         proved a field can have a dead ODM rule but a live Direct-only default.
-      2. 34 fields w/ 2-3 rules + remaining single-rule ODM fields (auto-triaged, unconfirmed).
-      3. Then build `PGR_Defaults_FINAL.csv` (see FINAL OUTPUT SPEC).
-      Deadline: user needs final output tomorrow.
+      1. Direct-only / prose-logic defaults (Issue #16, HIGH) — 🟢 the 9 held HOLD-file
+         fields resolved 2026-07-12 (see Decisions Log). Any remaining prose-logic beyond
+         those 9 still to sweep. YearsAtAddress proved a field can have a dead ODM rule
+         but a live Direct-only default.
+      2. ~23 single-rule / 2-3-rule ODM-only fields — 🟢 ALL CLASSIFIED 2026-07-12
+         (see Decisions Log). 17 clear-when-not-applicable → System; PL_PoolType → System
+         (+ product consolidation Q); BuiltOnSlope → Business (agent carrier question, FC1);
+         InsideCityLimits → Product (no Direct ref). Step 3d is now COMPLETE.
+      3. Then build `PGR_Defaults_FINAL.csv` (see FINAL OUTPUT SPEC). ← NEXT
   - **Lesson:** verify distinct-vs-duplicate on FULL conditions before calling
     something duplication — shared condition prefixes can hide real differences.
 
@@ -277,6 +359,54 @@ computed values / FORMAT STRING expressions, not parser bugs).
 ---
 
 ## Decisions Log — permanent record
+
+### 2026-07-12 (Issue #7 tail — final ~23 ODM-only fields classified → step 3d COMPLETE)
+- **17 clear-when-not-applicable → System** (established cleaning pattern, empty default +
+  hidden + guard): CoFirstName, CoLastName, CoMiddleName, CoDateOfBirth, SelectRelationshipToClient
+  (AnyAdditionalInsured=false); SSN, CoSSN (SSN-removal); OilTankLocation, PL_TrampolineInFence,
+  PL_NettedTrampoline, TypeGarageCarport, TypeOfBusinessDD, PreviousAddress, ReasonVacant,
+  PL_TypeFireplaces, PLPersonalProperty, PL_BasementFinish, YearsWithPriorCarrierHome,
+  PL_RoofUpdateYearRange.
+- **PL_PoolType → System** (cleaning always) + product consolidation Q retained (why both
+  PLSwimmingPoolType and PL_PoolType).
+- **BuiltOnSlope → Business.** User: question shown only in Consumer flow; for Agent it is a
+  carrier question, so the default is a Business default, FC1 stage only.
+- **InsideCityLimits → Product** (no Direct reference; address-adjacent). Added to product master.
+- UUIDs for every rule recorded in the decision log; they carry into `PGR_Defaults_FINAL.csv`.
+**Step 3d (ODM-ONLY review) is COMPLETE. Next: build the FINAL per-rule output.**
+
+
+Resolved the 9 held prose-logic fields from `PGR_Direct_Defaults_ProseLogic_HOLD.csv`:
+- **DogsBreedsSelection[]** → Business (state hidden → NoneOfTheAbove; NV + AZ/CO/IL/MN/NY
+  merged to ONE rule) + System (no-dogs empty cleaning, 873bfe42). ODM covers it.
+- **Bankruptcy** → Business, DIRECT-sourced → DB (AppData ForeclosureOrRepossessionOrBankruptcy
+  intentionally-removed; user-confirmed).
+- **RoofResponsible** → System (consumer hidden empty, 6766c562) + Business (Agent True if
+  TypeOfDwelling=Condominium, DIRECT-sourced). Product flag: name mess (PL_RoofResponsible vs
+  RoofResponsible) + flow discrepancy + "changes the LOB" → verify UI-only.
+- **ReplacementCost** → DROP, no default (Agent "blank if not data-filled" = prefill-only).
+- **LivingTime** → DROP, no default (PL_LivingTime in ODM is only a CONDITION feeding
+  OccupancyType default 3dbd8684; user-confirmed).
+- **DwellingOccupancy** = OccupancyType (already Business + System); no separate rules.
+- **DateOccupied, PurchaseDate** → already in product (date computed defaults); **ElectricalUpdated**
+  → already covered (typo-twin of ElectircalUpdated + name-alignment product item). Confirmed, not re-done.
+
+**Issue #4 (PL_NumberOfFloors):** re-confirmed this session, but it was ALREADY resolved on
+2026-07-07 (below) with identical conclusions — no change. `ba_floor-questions-segment` cleanup
+lives in `progressive_config.json` (business_flags), not a flags CSV.
+
+**RESTORED (was lost when intermediate files were deleted):** NumberOfChildernsUnder18 →
+product (value disagreement, ODM 0 vs Direct 1). Re-added to `PGR_Product_Review_MASTER.csv`.
+
+**Housekeeping / de-duplication:**
+- `PGR_Defaults_Classified.csv` is now a GENERATED MIRROR of `PGR_ODM_Only_Field_Decisions.csv`
+  (the authoritative decision log). They previously overlapped (Classified was a 66-field subset
+  of the 69-field ODM_Only) and risked drift. ODM_Only is the master; Classified is the simple view.
+- RoofUpdatedYear stays **18 unique rules** (Triage dup collapsed). A "36 rules" note produced
+  mid-session was an error and was NOT persisted.
+- PLDfForm stays **92 rules, all Business** (per prior decision). Observed 1 empty-default rule
+  in the set — flagged for a later quick check whether it is a separate cleaning rule; call unchanged.
+
 
 ### 2026-07-07 (REVIEW complete + retired fields)
 **All 39 REVIEW fields classified.** Final batches: person/carrier (6) + Group 3 (3).
@@ -520,51 +650,50 @@ entries below.
 ---
 
 ## Open Issues
-See `OPEN_ISSUES.md`. Summary:
+Summary table below; full detail in `OPEN_ISSUES.md` (regenerated 2026-07-12, kept in sync).
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
 | 1 | EffectiveDate duplicate rule pair | Medium | Product |
 | 2 | EffectiveDate Agent display-lock | Medium | Product |
 | 3 | All date-field defaults sign-off | Medium | Product |
-| 4 | PL_NumberOfFloors 2 corrupt defaults | High | Investigate |
+| 4 | PL_NumberOfFloors 2 corrupt defaults | High | ✅ RESOLVED 2026-07-07 (re-confirmed 07-12). BPPComputerEquip→product; self-ref/1.0/floor-flag rules dead; flag cleanup in config |
 | 5 | PreDateOccupied1 mis-grouped | Low | Noted |
 | 6 | Chat decisions not persisted to pipeline | High (infra) | TBD |
-| 7 | 532 ODM-ONLY rows unverified (duplication) | Medium | TBD (step 3d) |
+| 7 | ODM-ONLY rows unverified | Medium | ✅ COMPLETE 2026-07-12. All 519 ODM-only (Default-type) accounted for: dead + prior-classified + address-sync + heavy-hitters + the final ~23-field tail. Step 3d done |
 | 8 | Field duplication pairs (NumberCarSpace etc) | Medium | Product |
 | 9 | 5 default value disagreements | Medium | Product |
 | 10 | 20 DIRECT-ONLY gaps unverified | Medium | TBD (step 3c) |
 | 11 | Classifier skill needs 4 updates | Medium | Awaiting user approval |
+| 16 | Direct-only / prose-logic defaults | High | 🟢 9 held HOLD fields resolved 2026-07-12; any remaining prose-logic beyond those still to sweep |
 
 ---
 
-## Files (this session's outputs)
+## Files (authoritative handoff set)
 
-### Defaults workflow (data)
-- `PGR_Defaults_Defaults.csv` — ODM parse (step 1, 933 rules)
-- `PGR_Direct_Defaults.csv` — Direct real defaults (step 2)
-- `PGR_Direct_Defaults_ProseLogic_HOLD.csv` — held prose-logic defaults (step 2)
-- `PGR_Defaults_Merged_v2.csv` — merged ODM+Direct (step 3, current). v1 deleted.
-- `PGR_BlankCanonical_Categorization.csv` — step 3d blank-canonical 40-field map
+**As of 2026-07-12 the handoff set is FOUR files that travel together.** The working/
+intermediate CSVs below were pruned from the handoff (regenerable from the parser +
+project Excel); if you still have them locally, keep them, but the four files here are
+the source of truth.
 
-### Resolution / mapping references
-- `PGR_AppData_Name_Mappings.json` — 16 ODM/Direct → AppData canonical name mappings
-- `PGR_Field_Resolution_Decisions.csv` — resolution calls (DwellingOccupancy→OccupancyType,
-  Bankruptcy→DB, Pre* fields no-mapping, etc.) from the AppData-anchor session
-- `PGR_Enum_Label_Normalization.json` — 5 confirmed enum↔label pairs
-- `progressive_config.json` — tenant config (UPDATED this session: added
-  `ba_floor-questions-segment` as ALWAYS_TRUE_CLEANUP flag)
+### The authoritative files
+- `PROJECT_PROGRESS.md` — this file. Status + Decisions Log = source of truth.
+- `OPEN_ISSUES.md` — detailed open/resolved issues log (mirrors the summary table here).
+- `PGR_ODM_Only_Field_Decisions.csv` — **the decision log** (Field, Rule Detail,
+  Classification, Product Flag, Source, Notes). Field-level reasoning: *why* each field
+  was classified as it was.
+- `PGR_Product_Review_MASTER.csv` — **the only** product-review output (58 items). Append
+  new items here; never create separate product CSVs.
 
-### FINAL output (emerging)
-- `PGR_Defaults_Classified.csv` — per-field System/Business calls. Grows as step 3d
-  completes; feeds step 7. (~33 System + ~6 Business so far.)
+> `PGR_Defaults_Classified.csv` is **RETIRED** (2026-07-12). It was only a simplified mirror
+> of the decision log and risked drift. Do not maintain it. Per-rule detail (UUID + full
+> condition + default value + classification) belongs in the FINAL file, not a second log.
 
-### Product review — SINGLE FILE
-- `PGR_Product_Review_MASTER.csv` — **the only** product-review output (30 items).
-  Categories: Default Value Disagreement, ODM Default — No Direct Reference, Date Field
-  — Computed Default, Name Alignment, Duplicate Rule, Rule Review, Default Logic Review,
-  Direct Data Correction, Field Missing From Direct, Field Purpose Unclear, Unknown Field.
-  Append new items here; never create separate product CSVs.
+### FINAL output (still to build — see FINAL OUTPUT SPEC near top)
+- `PGR_Defaults_FINAL.csv` — **ONE ROW PER RULE, keyed by UUID**, with full condition,
+  default value, Classification, Classification Source, OperationSource, Source File.
+  This is where per-rule UUID + condition live. Build after the step-3d tail (the ~23
+  unclassified fields) is done.
 
 ### Testing archive
 - `PGR_Dead_Ignored_Rules.csv` — archive of all dead/skipped/ignored rules. 634 rules
@@ -595,6 +724,45 @@ See `OPEN_ISSUES.md`. Summary:
 - (d) exact/word-boundary field matching (PreDateOccupied1 was folded into DateOccupied)
 
 Also consider: apply `PGR_Enum_Label_Normalization.json` in the merge/compare step.
+
+---
+
+## 📚 REFERENCE (durable — absorbed from the former HANDOFF_SUMMARY.md)
+
+**This is now the ONLY project doc.** HANDOFF_SUMMARY.md was merged here and deleted.
+
+### Progressive config knowledge (progressive_config.json)
+- Identity flags (any true = applies to Progressive): `Progressive_Interview`, `NoReplacementCost`,
+  `TriageQuestions`. (This HQ2 dataset gates via Claim/source flags instead.)
+- Source flags: `ba_LightApi` = HQX 2.0 (consumer); `ba_odysseyapi` = PAA 2.0 (agent).
+- Cleanup flags (always-ON → fixate true, drop the flag): `ba_floor-questions-segment`, `ba_no-of-units`.
+- `ba_fl-carriertrue` = always OFF (so "ENABLED=false" is satisfied → rule LIVE).
+- `ba_df-consumer-hqx10` = retired (removed from LD) → treat as always FALSE: rules requiring it
+  TRUE are dead; requiring it FALSE fire (InsideCityLimits, InsuranceFraud, PropertyInsuranceCancelled).
+- Retired fields: `TriagePriorCarrierHomeowners`, `HomeNewPurchase` (+ rule: unknown=true → keep, known/value → dead).
+
+### Extra pattern: corrupt / parse-artifact defaults
+Default value == a field named in the SAME condition (e.g. BPPComputerEquip, FaultClamisNum3Y,
+NunMajorViolationsLast3Years) = parse-artifact signature → product / exclude, verify raw .m.
+
+### Working style (user preferences)
+- Batch by pattern; propose classifications; user approves/corrects per batch.
+- NEVER auto-decide duplication or Triage-stage collapse — surface to user.
+- Verify claims against the data before recording — don't assume, don't re-derive what's already decided.
+- The product sheet is the COMPLETE field set — don't invent "new" fields unless a fresh parse surfaces them.
+- When the USER makes a call not confirmed by product, tag it in the decision log
+  `Source: implementation-eng (pending product confirm)`.
+- CSV/MD only while working; regenerate xlsx (QA views) only on request. QA CSV dropped for now.
+- Do NOT edit the classifier skill without explicit approval (Issue #11).
+
+### Parser
+Skill `odm-parser`; run needs `odm_core.py` + `odm_defaults.py`, `--config progressive_config.json
+--input odm_input/ --output`. Source .m files come from the HQ2_Interview zip.
+**Rerun recommended before locking FINAL:** (a) prove the product sheet is complete via one diff,
+(b) refresh stale UUIDs (fields moved between tables get new UUIDs — e.g. ApplicantYearofBirth),
+(c) pick up condition changes. After rerun: reconcile fresh rules against the decision log + product
+sheet BY FIELD NAME; renamed/moved fields lose their name-keyed decision and resurface as
+"unclassified" (expected, not a new field).
 
 ---
 

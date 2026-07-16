@@ -174,6 +174,24 @@
       "classification": "SKIP",
       "always_on": true,
       "reason": "Always ON. IS ENABLED=false rules never fire \u2014 skip those files."
+    },
+    "Progressive_Interview": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "identity_flag": true,
+      "reason": "Progressive identity flag. IS ENABLED=true => Progressive rule (KEEP); IS ENABLED=false => not Progressive (skip file). Placed in skip_flags with always_on:true because the parser only resolves business_flags for ba_-prefixed flags. OR-semantics across the three identity flags is documented in progressive_identity_flags; safe here (only Progressive_Interview appears, never combined)."
+    },
+    "NoReplacementCost": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "identity_flag": true,
+      "reason": "Progressive identity flag. IS ENABLED=true => Progressive rule (KEEP); IS ENABLED=false => not Progressive (skip file). Placed in skip_flags with always_on:true because the parser only resolves business_flags for ba_-prefixed flags. OR-semantics across the three identity flags is documented in progressive_identity_flags; safe here (only Progressive_Interview appears, never combined)."
+    },
+    "TriageQuestions": {
+      "classification": "IMPLEMENT",
+      "always_on": true,
+      "identity_flag": true,
+      "reason": "Progressive identity flag. IS ENABLED=true => Progressive rule (KEEP); IS ENABLED=false => not Progressive (skip file). Placed in skip_flags with always_on:true because the parser only resolves business_flags for ba_-prefixed flags. OR-semantics across the three identity flags is documented in progressive_identity_flags; safe here (only Progressive_Interview appears, never combined)."
     }
   },
   "source_flags": {
@@ -256,10 +274,15 @@
       "reason": "Source identity flag. ON = GetQuote source. OFF = everything else. Evaluate per condition."
     },
     "ba_Condo_Redesign": {
-      "classification": "CLEANUP",
-      "always_on": false,
-      "effective_value": false,
-      "reason": "IS ENABLED=false targets other tenants. In Progressive flag is ON so IS ENABLED=false rules don't apply."
+      "classification": "ALWAYS_TRUE_CLEANUP",
+      "always_on": true,
+      "effective_value": true,
+      "reason": "LaunchDarkly: ON (true) only for the Progressive tenant. Keep as a live condition - rules requiring IS ENABLED=true fire; the IS ENABLED=false branch is dead for Progressive. Referenced only in ODM with zero front-end/code reference => cleanup candidate (fixate true, then remove the flag). Affects Homesite & ASI for Progressive.",
+      "needs_cleanup": true,
+      "carriers": [
+        "Homesite",
+        "ASI"
+      ]
     },
     "ba_number-of-families": {
       "classification": "IMPLEMENT",
@@ -271,19 +294,19 @@
       "classification": "CLEANUP",
       "always_on": true,
       "effective_value": true,
-      "reason": "Always ON. Has two branches (true/false) but should be fixated to true. Cleanup candidate \u2014 remove flag and keep only the IS ENABLED=true branch logic."
+      "reason": "ON in all envs. Implement TRUE. Relevancy-only rules; the carrier referencing it is no longer a PGR carrier; code cleanup, no user story. [2026-07-15]"
     },
     "ba_yearbuild-default-date": {
-      "classification": "IMPLEMENT",
+      "classification": "ALWAYS_TRUE_CLEANUP",
       "always_on": true,
       "effective_value": true,
-      "reason": "Always ON. Only IS ENABLED=true rules fire."
+      "reason": "ON in all envs. Implement TRUE. Gates PurchaseDate/DateOccupied computed defaults. ODM-only cleanup, no user story. [2026-07-15]"
     },
     "ba_fl-carriertrue": {
-      "classification": "IMPLEMENT",
+      "classification": "CLEANUP",
       "always_on": false,
       "effective_value": false,
-      "reason": "Always OFF. Only IS ENABLED=false rules fire."
+      "reason": "Always FALSE (ENABLED=true branch is dead; ENABLED=false fires). Code cleaned but ODM missed (backlog cleaning story). Controls triage questions. Remove from ODM. [2026-07-15]"
     },
     "ba_SSNRemoval": {
       "classification": "IMPLEMENT",
@@ -292,10 +315,10 @@
       "reason": "Always ON. Only IS ENABLED=true rules fire."
     },
     "ba_tmp_preference_redesign_cr618": {
-      "classification": "IMPLEMENT",
+      "classification": "ALWAYS_TRUE_CLEANUP",
       "always_on": true,
       "effective_value": true,
-      "reason": "Always ON. Only IS ENABLED=true rules fire."
+      "reason": "ON in all envs; TRUE in all ODM refs. Implement TRUE. Verify behaviour; remove from interview JSONs. ODM-only, no user story. Gates Progressive_Preferences 10/11/12 defaults. [2026-07-15]"
     },
     "ba_exotic-ho6-1-0": {
       "classification": "IMPLEMENT",
@@ -353,7 +376,9 @@
     },
     "ba_floor-questions-segment": {
       "classification": "ALWAYS_TRUE_CLEANUP",
-      "note": "On in all environments. Treat as always true; rules requiring it FALSE are dead. Should be cleaned from code."
+      "reason": "ON in LaunchDarkly across ALL environments. Still referenced in the code, so keep it as a live condition (both branches retained; do NOT fixate/remove yet). The flag reference must be cleaned from the code. NOTE: the IS ENABLED=false branch will not fire while the flag is ON.",
+      "needs_cleanup": true,
+      "cleanup_status": "NEW backlog user story - to be promoted"
     },
     "ba_AMSUITE_HO10": {
       "classification": "IMPLEMENT",
