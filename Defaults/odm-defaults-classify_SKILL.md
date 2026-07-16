@@ -127,6 +127,8 @@ All output files carry the original ODM columns plus these enriched columns:
 | `Direct Control Type` | Control type from Direct (authoritative) |
 | `Direct Display Rules` | Raw display rules from Direct |
 | `Direct Default Value` | Default value as specified in Direct (may differ from ODM) |
+| `Implement Value` | **The single authoritative default to actually implement** for this row (see derivation below). This is the column downstream SQL/RE generation reads — not `Default Value`. |
+| `Value Status` | Why `Implement Value` holds what it does: `OK` / `EMPTY (clear field)` / `COMPUTED` / `CONDITIONAL` / `RESOLVED (user)` / `PARSE-ARTIFACT`. Tells QA how much to trust the value and which rows a human signed off on. |
 | `Direct LOBs` | LOBs from Direct (cross-check against ODM LOBs) |
 | `Classification` | System / Business / Review |
 | `Classification Reason` | Why this classification was assigned |
@@ -306,3 +308,27 @@ Flag states are baked into the parser output, so flag config only matters on a *
 3. Coverage = BOTH / ODM-ONLY / DIRECT-ONLY (Direct↔ODM matched via name aliases, incl. `PL`-prefix twins).
 4. Walk Product-Review with product in batches of ~15; write decisions into the FINAL (Classification + Reason).
 5. Route exclusions to the reference CSV. **Reconcile**: every input UUID must appear in FINAL or the reference.
+6. **Derive `Implement Value` + `Value Status`** for every row (this is the base info core downstream code-gen consumes).
+
+### Implement Value derivation (the actual default to migrate)
+`Default Value` (ODM) mixes clean literals, enum codes, and computed expressions; `Direct Default Value` mixes labels
+and conditional prose. Neither alone is implementable. Derive one authoritative `Implement Value` per row:
+
+- **Manual override** — a recorded user/product decision wins over both. Status `RESOLVED (user YYYY-MM-DD)`.
+  (Progressive so far: `NumberOfMortgagees`=0, `NumberOfChildren`=0, `CurrentPersonalHomeownerCarrier`=Other, `SupplementalHeating`=0.)
+- **Parse-artifact** — if the ODM default equals a field name (`NunMajorViolationsLast3Years`, `BPPComputerEquip`,
+  `FaultClamisNum3Y`): blank it, status `PARSE-ARTIFACT — do not migrate; verify raw .m`.
+- **Empty** — ODM and Direct both blank (System clear-field rules): value is empty; status `EMPTY (clear field)`. Empty IS the value.
+- **ODM blank, Direct present** — use Direct if it's a clean literal (`OK (Direct)`); if Direct is prose, blank + `CONDITIONAL (Direct)`.
+- **Computed** — ODM value is a formula or cross-field ref (`today's year - 50`, `PLYearBuilt`, contains `(` or `/`,
+  arithmetic, date-ish): keep the expression as `Implement Value`, status `COMPUTED`. A computed default cannot be a
+  static DB default — it belongs in RE logic even if the row is classed Business.
+- **Conditional prose** — ODM value is multi-word / contains if/then: keep as-is, status `CONDITIONAL`.
+- **Clean literal/enum** — store the **ODM enum code**, not the Direct human label, even when they agree (`CompleteUpdate`,
+  not "Complete Update"). Compare via `PGR_Enum_Label_Normalization.json` + a space/case-insensitive squash, matching field
+  keys with `PL_`/`PL_F###_`/`[]`/path stripped. Status `OK` (or `OK (enum; Direct describes branching)` when Direct is prose).
+- **Genuine ODM≠Direct disagreement** (both clean literals, not enum-equivalent) — do NOT auto-pick. Keep the ODM enum
+  and flag `REVIEW (ODM=x vs Direct=y)`; surface to user/product for a decision, then convert to a `RESOLVED` override.
+
+Never fabricate a single literal for computed/conditional rows. `Implement Value` blank + a COMPUTED/CONDITIONAL status
+is the correct output there — the logic lives in `Field Conditions`.
